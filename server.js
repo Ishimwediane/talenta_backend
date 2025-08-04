@@ -1,5 +1,4 @@
 import express from 'express';
-import mongoose from 'mongoose';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -7,6 +6,7 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
+import prisma from './lib/prisma.js';
 import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
 import contentRoutes from './routes/content.routes.js';
@@ -30,13 +30,17 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/talenta')
-  .then(() => {
-    console.log('✅ Connected to MongoDB');
-  })
-  .catch((error) => {
-    console.error('❌ MongoDB connection error:', error);
-  });
+async function connectDatabase() {
+  try {
+    await prisma.$connect();
+    console.log('✅ Connected to PostgreSQL database');
+  } catch (error) {
+    console.error('❌ Database connection error:', error);
+    process.exit(1);
+  }
+}
+
+connectDatabase();
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -73,4 +77,17 @@ app.use('*', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Talenta Backend Server running on port ${PORT}`);
   console.log(`📱 Environment: ${process.env.NODE_ENV || 'development'}`);
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('🔄 Shutting down gracefully...');
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('🔄 Shutting down gracefully...');
+  await prisma.$disconnect();
+  process.exit(0);
 }); 

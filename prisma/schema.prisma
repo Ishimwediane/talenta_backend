@@ -1,0 +1,159 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String    @id @default(cuid())
+  firstName            String    @db.VarChar(50)
+  lastName             String    @db.VarChar(50)
+  email                String?   @unique @db.VarChar(255)
+  phone                String?   @unique @db.VarChar(20)
+  password             String    @db.VarChar(255)
+  profilePicture       String?   @db.VarChar(500)
+  bio                  String?   @db.VarChar(500)
+  location             String?   @db.VarChar(100)
+  dateOfBirth          DateTime?
+  gender               Gender    @default(PREFER_NOT_TO_SAY)
+  interests            Interest[]
+  socialLinks          SocialLinks?
+  isVerified           Boolean   @default(false)
+  verificationToken    String?   @unique @db.VarChar(255)
+  verificationTokenExpires DateTime?
+  resetPasswordToken   String?   @unique @db.VarChar(255)
+  resetPasswordExpires DateTime?
+  lastLogin            DateTime  @default(now())
+  loginAttempts        Int       @default(0)
+  lockUntil            DateTime?
+  isActive             Boolean   @default(true)
+  role                 Role      @default(USER)
+  earnings             Earnings?
+  stats                UserStats?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  // Relations
+  contents             Content[]
+
+  @@map("users")
+}
+
+model SocialLinks {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  instagram String?  @db.VarChar(255)
+  twitter   String?  @db.VarChar(255)
+  facebook  String?  @db.VarChar(255)
+  youtube   String?  @db.VarChar(255)
+  tiktok    String?  @db.VarChar(255)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("social_links")
+}
+
+model Earnings {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  total     Float    @default(0)
+  pending   Float    @default(0)
+  withdrawn Float    @default(0)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("earnings")
+}
+
+model UserStats {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  totalViews   Int      @default(0)
+  totalLikes   Int      @default(0)
+  totalShares  Int      @default(0)
+  totalContent Int      @default(0)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("user_stats")
+}
+
+model Content {
+  id          String      @id @default(cuid())
+  title       String      @db.VarChar(255)
+  description String?     @db.Text
+  type        ContentType
+  category    String      @db.VarChar(100)
+  tags        String[]    @default([])
+  fileUrl     String      @db.VarChar(500)
+  thumbnailUrl String?    @db.VarChar(500)
+  duration    Int?        // in seconds
+  views       Int         @default(0)
+  likes       Int         @default(0)
+  shares      Int         @default(0)
+  isPublished Boolean     @default(false)
+  isApproved  Boolean     @default(false)
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@map("contents")
+}
+
+model UserInterest {
+  id     String @id @default(cuid())
+  userId String
+  interest Interest
+
+  @@unique([userId, interest])
+  @@map("user_interests")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum Role {
+  USER
+  CREATOR
+  ADMIN
+  MODERATOR
+}
+
+enum ContentType {
+  FILM
+  PODCAST
+  POETRY
+  MUSIC
+  PHOTOGRAPHY
+  ART
+}
+
+enum Interest {
+  FILM
+  POETRY
+  PODCAST
+  MUSIC
+  PHOTOGRAPHY
+  ART
+  TECHNOLOGY
+  EDUCATION
+  SOCIAL_COMMENTARY
+  ENTERTAINMENT
+}

@@ -7,6 +7,11 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:seed": "node prisma/seed.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -19,6 +24,7 @@
   "author": "Talenta Team",
   "license": "ISC",
   "dependencies": {
+    "@prisma/client": "^6.13.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
@@ -26,9 +32,9 @@
     "express-validator": "^7.0.1",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.0.3",
     "morgan": "^1.10.0",
-    "multer": "^1.4.5-lts.1"
+    "multer": "^1.4.5-lts.1",
+    "prisma": "^6.13.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

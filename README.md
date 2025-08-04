@@ -1,6 +1,6 @@
 # Talenta Backend API
 
-Backend API for Talenta - Rwandan Youth Creative Platform. Built with Node.js, Express, and MongoDB.
+Backend API for Talenta - Rwandan Youth Creative Platform. Built with Node.js, Express, and PostgreSQL.
 
 ## 🚀 Features
 
@@ -9,32 +9,33 @@ Backend API for Talenta - Rwandan Youth Creative Platform. Built with Node.js, E
 - **Input Validation**: Comprehensive validation using express-validator
 - **Error Handling**: Standardized error responses
 - **Security**: Helmet, CORS, rate limiting
-- **Database**: MongoDB with Mongoose ODM
+- **Database**: PostgreSQL with Prisma ORM
 - **ES6 Modules**: Modern JavaScript syntax
 
 ## 📁 Project Structure
 
 ```
 backend/
-├── models/                 # Database models
-│   └── user.model.js      # User schema and methods
-├── controllers/           # Route controllers
+├── prisma/              # Database schema and migrations
+│   └── schema.prisma    # Prisma schema definition
+├── lib/                 # Library configurations
+│   └── prisma.js        # Prisma client configuration
+├── controllers/         # Route controllers
 │   └── auth.controller.js # Authentication logic
-├── services/             # Business logic
-│   └── auth.service.js   # Authentication service
-├── routes/               # API routes
-│   ├── auth.routes.js    # Authentication endpoints
-│   ├── user.routes.js    # User management endpoints
+├── services/           # Business logic
+│   └── auth.service.js # Authentication service
+├── routes/             # API routes
+│   ├── auth.routes.js  # Authentication endpoints
+│   ├── user.routes.js  # User management endpoints
 │   └── content.routes.js # Content management endpoints
-├── middleware/           # Custom middleware
+├── middleware/         # Custom middleware
 │   ├── auth.middleware.js    # Authentication middleware
 │   └── validation.middleware.js # Input validation
-├── utils/               # Utility functions
-│   └── apiResponse.js   # Standardized API responses
-├── config/              # Configuration files
-├── server.js           # Main server file
-├── package.json        # Dependencies and scripts
-└── env.example         # Environment variables template
+├── utils/             # Utility functions
+│   └── apiResponse.js # Standardized API responses
+├── server.js         # Main server file
+├── package.json      # Dependencies and scripts
+└── env.example       # Environment variables template
 ```
 
 ## 🛠️ Installation
@@ -55,7 +56,19 @@ backend/
    ```
    Edit `.env` with your configuration values.
 
-4. **Start the server**
+4. **Set up the database**
+   ```bash
+   # Generate Prisma client
+   npm run db:generate
+   
+   # Push schema to database (for development)
+   npm run db:push
+   
+   # Or run migrations (for production)
+   npm run db:migrate
+   ```
+
+5. **Start the server**
    ```bash
    # Development
    npm run dev
@@ -74,7 +87,7 @@ PORT=5000
 NODE_ENV=development
 
 # Database Configuration
-MONGODB_URI=mongodb://localhost:27017/talenta
+DATABASE_URL="postgresql://username:password@localhost:5432/talenta?schema=public"
 
 # JWT Configuration
 JWT_SECRET=your-super-secret-jwt-key-here
@@ -218,10 +231,17 @@ All errors follow a standardized format:
 - Basic info: firstName, lastName, email, phone
 - Authentication: password, verification tokens
 - Profile: bio, location, dateOfBirth, gender, interests
-- Social: social media links
+- Social: social media links (related table)
 - Security: login attempts, account lock, verification status
-- Stats: earnings, views, likes, shares, content count
+- Stats: earnings, views, likes, shares, content count (related tables)
 - Timestamps: createdAt, updatedAt, lastLogin
+
+### Related Models
+- **SocialLinks**: User social media profiles
+- **Earnings**: User earnings tracking
+- **UserStats**: User statistics and metrics
+- **Content**: User uploaded content
+- **UserInterest**: Many-to-many relationship for user interests
 
 ## 🚧 Future Enhancements
 

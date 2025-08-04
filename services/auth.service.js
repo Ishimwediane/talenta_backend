@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import User from '../models/user.model.js';
+import prisma from '../lib/prisma.js';
 
 class AuthService {
   // Generate JWT token
@@ -26,17 +26,48 @@ class AuthService {
     return { token, expires };
   }
 
+  // Increment login attempts
+  async incrementLoginAttempts(userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (user.lockUntil && user.lockUntil < new Date()) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          lockUntil: null,
+          loginAttempts: 1
+        }
+      });
+    } else {
+      const newLoginAttempts = user.loginAttempts + 1;
+      const updates = { loginAttempts: newLoginAttempts };
+      
+      if (newLoginAttempts >= 5) {
+        updates.lockUntil = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours
+      }
+      
+      await prisma.user.update({
+        where: { id: userId },
+        data: updates
+      });
+    }
+  }
+
   // Register new user
   async register(userData) {
     try {
       const { email, phone, password, firstName, lastName } = userData;
 
       // Check if user already exists
-      const existingUser = await User.findOne({
-        $or: [
-          { email: email?.toLowerCase() },
-          { phone: phone }
-        ].filter(Boolean)
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: email?.toLowerCase() },
+            { phone: phone }
+          ].filter(Boolean)
+        }
       });
 
       if (existingUser) {
@@ -46,25 +77,40 @@ class AuthService {
       // Generate verification token
       const { token: verificationToken, expires: verificationTokenExpires } = this.generateVerificationToken();
 
+      // Hash password
+      const bcrypt = await import('bcryptjs');
+      const salt = await bcrypt.genSalt(12);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
       // Create new user
-      const user = new User({
-        firstName,
-        lastName,
-        email: email?.toLowerCase(),
-        phone,
-        password,
-        verificationToken,
-        verificationTokenExpires
+      const user = await prisma.user.create({
+        data: {
+          firstName,
+          lastName,
+          email: email?.toLowerCase(),
+          phone,
+          password: hashedPassword,
+          verificationToken,
+          verificationTokenExpires,
+          earnings: {
+            create: {}
+          },
+          stats: {
+            create: {}
+          }
+        },
+        include: {
+          earnings: true,
+          stats: true
+        }
       });
 
-      await user.save();
-
       // Generate JWT token
-      const jwtToken = this.generateToken(user._id);
+      const jwtToken = this.generateToken(user.id);
 
       // Return user data without sensitive information
       const userResponse = {
-        id: user._id,
+        id: user.id,
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
@@ -90,14 +136,26 @@ class AuthService {
       const { emailOrPhone, password } = credentials;
 
       // Find user by email or phone
-      const user = await User.findByEmailOrPhone(emailOrPhone).select('+password');
+      const user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: emailOrPhone },
+            { phone: emailOrPhone }
+          ]
+        },
+        include: {
+          earnings: true,
+          stats: true,
+          socialLinks: true
+        }
+      });
 
       if (!user) {
         throw new Error('Invalid credentials');
       }
 
       // Check if account is locked
-      if (user.isLocked) {
+      if (user.lockUntil && user.lockUntil > new Date()) {
         throw new Error('Account is temporarily locked. Please try again later.');
       }
 
@@ -107,34 +165,36 @@ class AuthService {
       }
 
       // Verify password
-      const isPasswordValid = await user.comparePassword(password);
+      const bcrypt = await import('bcryptjs');
+      const isPasswordValid = await bcrypt.compare(password, user.password);
       if (!isPasswordValid) {
-        await user.incLoginAttempts();
+        await this.incrementLoginAttempts(user.id);
         throw new Error('Invalid credentials');
       }
 
       // Reset login attempts on successful login
       if (user.loginAttempts > 0) {
-        await User.updateOne(
-          { _id: user._id },
-          { 
-            $unset: { lockUntil: 1, loginAttempts: 1 },
-            $set: { lastLogin: new Date() }
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            lockUntil: null,
+            loginAttempts: 0,
+            lastLogin: new Date()
           }
-        );
+        });
       } else {
-        await User.updateOne(
-          { _id: user._id },
-          { lastLogin: new Date() }
-        );
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { lastLogin: new Date() }
+        });
       }
 
       // Generate JWT token
-      const token = this.generateToken(user._id);
+      const token = this.generateToken(user.id);
 
       // Return user data
       const userResponse = {
-        id: user._id,
+        id: user.id,
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
@@ -165,19 +225,27 @@ class AuthService {
   // Verify email
   async verifyEmail(token) {
     try {
-      const user = await User.findOne({
-        verificationToken: token,
-        verificationTokenExpires: { $gt: Date.now() }
+      const user = await prisma.user.findFirst({
+        where: {
+          verificationToken: token,
+          verificationTokenExpires: {
+            gt: new Date()
+          }
+        }
       });
 
       if (!user) {
         throw new Error('Invalid or expired verification token');
       }
 
-      user.isVerified = true;
-      user.verificationToken = undefined;
-      user.verificationTokenExpires = undefined;
-      await user.save();
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          isVerified: true,
+          verificationToken: null,
+          verificationTokenExpires: null
+        }
+      });
 
       return {
         message: 'Email verified successfully'
@@ -190,7 +258,14 @@ class AuthService {
   // Forgot password
   async forgotPassword(emailOrPhone) {
     try {
-      const user = await User.findByEmailOrPhone(emailOrPhone);
+      const user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: emailOrPhone },
+            { phone: emailOrPhone }
+          ]
+        }
+      });
 
       if (!user) {
         throw new Error('User not found');
@@ -198,9 +273,13 @@ class AuthService {
 
       const { token: resetToken, expires: resetExpires } = this.generateResetPasswordToken();
 
-      user.resetPasswordToken = resetToken;
-      user.resetPasswordExpires = resetExpires;
-      await user.save();
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          resetPasswordToken: resetToken,
+          resetPasswordExpires: resetExpires
+        }
+      });
 
       // TODO: Send email/SMS with reset token
       console.log('Reset token:', resetToken);
@@ -216,19 +295,32 @@ class AuthService {
   // Reset password
   async resetPassword(token, newPassword) {
     try {
-      const user = await User.findOne({
-        resetPasswordToken: token,
-        resetPasswordExpires: { $gt: Date.now() }
+      const user = await prisma.user.findFirst({
+        where: {
+          resetPasswordToken: token,
+          resetPasswordExpires: {
+            gt: new Date()
+          }
+        }
       });
 
       if (!user) {
         throw new Error('Invalid or expired reset token');
       }
 
-      user.password = newPassword;
-      user.resetPasswordToken = undefined;
-      user.resetPasswordExpires = undefined;
-      await user.save();
+      // Hash new password
+      const bcrypt = await import('bcryptjs');
+      const salt = await bcrypt.genSalt(12);
+      const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          password: hashedPassword,
+          resetPasswordToken: null,
+          resetPasswordExpires: null
+        }
+      });
 
       return {
         message: 'Password reset successfully'
@@ -241,7 +333,9 @@ class AuthService {
   // Refresh token
   async refreshToken(userId) {
     try {
-      const user = await User.findById(userId);
+      const user = await prisma.user.findUnique({
+        where: { id: userId }
+      });
 
       if (!user) {
         throw new Error('User not found');
@@ -251,7 +345,7 @@ class AuthService {
         throw new Error('Account is deactivated');
       }
 
-      const token = this.generateToken(user._id);
+      const token = this.generateToken(user.id);
 
       return {
         token,
@@ -266,10 +360,10 @@ class AuthService {
   async logout(userId) {
     try {
       // Update last login time
-      await User.updateOne(
-        { _id: userId },
-        { lastLogin: new Date() }
-      );
+      await prisma.user.update({
+        where: { id: userId },
+        data: { lastLogin: new Date() }
+      });
 
       return {
         message: 'Logged out successfully'
@@ -282,7 +376,14 @@ class AuthService {
   // Get current user
   async getCurrentUser(userId) {
     try {
-      const user = await User.findById(userId);
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          earnings: true,
+          stats: true,
+          socialLinks: true
+        }
+      });
 
       if (!user) {
         throw new Error('User not found');
@@ -293,7 +394,7 @@ class AuthService {
       }
 
       return {
-        id: user._id,
+        id: user.id,
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
@@ -304,9 +405,9 @@ class AuthService {
         dateOfBirth: user.dateOfBirth,
         gender: user.gender,
         interests: user.interests,
-        socialLinks: user.socialLinks,
         isVerified: user.isVerified,
         role: user.role,
+        socialLinks: user.socialLinks,
         earnings: user.earnings,
         stats: user.stats,
         lastLogin: user.lastLogin,

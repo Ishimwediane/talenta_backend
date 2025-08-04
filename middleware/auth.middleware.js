@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import User from '../models/user.model.js';
+import prisma from '../lib/prisma.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 
 export const authenticateToken = async (req, res, next) => {
@@ -12,7 +12,16 @@ export const authenticateToken = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.userId).select('-password');
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        isVerified: true,
+        isActive: true
+      }
+    });
 
     if (!user) {
       return ApiResponse.error(res, 'User not found', null, 404);
@@ -23,7 +32,7 @@ export const authenticateToken = async (req, res, next) => {
     }
 
     req.user = {
-      id: user._id,
+      id: user.id,
       email: user.email,
       role: user.role,
       isVerified: user.isVerified
@@ -64,11 +73,20 @@ export const optionalAuth = async (req, res, next) => {
 
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const user = await User.findById(decoded.userId).select('-password');
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          isVerified: true,
+          isActive: true
+        }
+      });
 
       if (user && user.isActive) {
         req.user = {
-          id: user._id,
+          id: user.id,
           email: user.email,
           role: user.role,
           isVerified: user.isVerified
