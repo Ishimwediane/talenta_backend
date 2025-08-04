@@ -58,7 +58,7 @@ class AuthService {
   // Register new user
   async register(userData) {
     try {
-      const { email, phone, password, firstName, lastName } = userData;
+      const { email, phone, password, firstName, lastName, role } = userData;
 
       // Check if user already exists
       const existingUser = await prisma.user.findFirst({
@@ -79,8 +79,8 @@ class AuthService {
 
       // Hash password
       const bcrypt = await import('bcryptjs');
-      const salt = await bcrypt.genSalt(12);
-      const hashedPassword = await bcrypt.hash(password, salt);
+      const salt = await bcrypt.default.genSalt(12);
+      const hashedPassword = await bcrypt.default.hash(password, salt);
 
       // Create new user
       const user = await prisma.user.create({
@@ -90,6 +90,7 @@ class AuthService {
           email: email?.toLowerCase(),
           phone,
           password: hashedPassword,
+          role: role || 'USER',
           verificationToken,
           verificationTokenExpires,
           earnings: {
@@ -166,7 +167,7 @@ class AuthService {
 
       // Verify password
       const bcrypt = await import('bcryptjs');
-      const isPasswordValid = await bcrypt.compare(password, user.password);
+      const isPasswordValid = await bcrypt.default.compare(password, user.password);
       if (!isPasswordValid) {
         await this.incrementLoginAttempts(user.id);
         throw new Error('Invalid credentials');
@@ -310,8 +311,8 @@ class AuthService {
 
       // Hash new password
       const bcrypt = await import('bcryptjs');
-      const salt = await bcrypt.genSalt(12);
-      const hashedPassword = await bcrypt.hash(newPassword, salt);
+      const salt = await bcrypt.default.genSalt(12);
+      const hashedPassword = await bcrypt.default.hash(newPassword, salt);
 
       await prisma.user.update({
         where: { id: user.id },

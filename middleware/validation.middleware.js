@@ -46,6 +46,11 @@ export const validateRegister = [
       return true;
     }),
 
+  body('role')
+    .optional()
+    .isIn(['USER', 'CREATOR', 'ADMIN'])
+    .withMessage('Role must be USER, CREATOR, or ADMIN'),
+
   // Ensure either email or phone is provided
   body()
     .custom((value, { req }) => {

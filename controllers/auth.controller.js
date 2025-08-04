@@ -12,13 +12,14 @@ class AuthController {
         return ApiResponse.error(res, 'Validation failed', errors.array(), 400);
       }
 
-      const { firstName, lastName, email, phone, password } = req.body;
+      const { firstName, lastName, email, phone, password, role } = req.body;
 
       // Determine if using email or phone
       const userData = {
         firstName,
         lastName,
-        password
+        password,
+        role: role || 'USER' // Default to USER if not provided
       };
 
       if (email) {
@@ -161,14 +162,25 @@ class AuthController {
     }
   }
 
-  // Google OAuth login (placeholder for future implementation)
+  // Google OAuth login
   async googleLogin(req, res) {
     try {
-      // TODO: Implement Google OAuth
-      return ApiResponse.error(res, 'Google OAuth not implemented yet', null, 501);
+      const { token } = req.body;
+
+      if (!token) {
+        return ApiResponse.error(res, 'Google token is required', null, 400);
+      }
+
+      const googleAuthService = await import('../services/googleAuth.service.js');
+      const result = await googleAuthService.default.authenticateWithGoogle(token);
+
+      return ApiResponse.success(res, result.message, {
+        user: result.user,
+        token: result.token
+      });
     } catch (error) {
       console.error('Google login error:', error);
-      return ApiResponse.error(res, error.message, null, 500);
+      return ApiResponse.error(res, error.message, null, 400);
     }
   }
 
