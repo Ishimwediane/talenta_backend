@@ -5,11 +5,14 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import bookRoutes from './routes/bookRoutes.js';
 
 import prisma from './lib/prisma.js';
 import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
 import contentRoutes from './routes/content.routes.js';
+import path from 'path';
+
 
 dotenv.config();
 
@@ -46,6 +49,10 @@ connectDatabase();
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/content', contentRoutes);
+app.use('/api/books', bookRoutes);
+app.use('/uploads', express.static(path.resolve('./uploads')));
+
+
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

@@ -19,7 +19,8 @@ class AuthController {
         firstName,
         lastName,
         password,
-        role: role || 'USER' // Default to USER if not provided
+         ...(email && { email }),
+        ...(phone && { phone })
       };
 
       if (email) {
