@@ -67,3 +67,20 @@ export const uploadBook = async (req, res) => {
     res.status(500).json({ error: 'Failed to upload book.' });
   }
 };
+
+export const getBooks = async (req, res) => {
+  try {
+    const books = await prisma.book.findMany({
+      // It's good practice to order the results, e.g., by creation date
+      orderBy: {
+        createdAt: 'desc',
+      },
+      // You could also select specific fields if you don't want to return everything
+      // select: { id: true, title: true, author: true, coverImage: true }
+    });
+    res.status(200).json(books);
+  } catch (error) {
+    console.error('🔥 getBooks error:', error);
+    res.status(500).json({ error: 'Failed to retrieve books.' });
+  }
+};

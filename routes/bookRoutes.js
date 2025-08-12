@@ -1,6 +1,6 @@
 import express from 'express';
 import upload from '../middleware/uploadMiddleware.js';
-import { uploadBook } from '../controllers/bookController.js';
+import { uploadBook ,getBooks} from '../controllers/bookController.js';
 import { authenticateToken, verifyAdmin } from '../middleware/auth.middleware.js';
 
 const router = express.Router(); 
@@ -17,6 +17,6 @@ router.post(
   uploadBook
 );
 
-// router.get('/', getBooks);
+router.get('/', getBooks);
 
 export default router;
