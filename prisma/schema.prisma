@@ -162,25 +162,21 @@ enum Interest {
 }
 
 model Book {
-  id              String   @id @default(cuid())
-  title           String   @db.VarChar(255)
-  authors         String   @db.VarChar(255)
-  description     String?  @db.Text
-  publisher       String?  @db.VarChar(255)
-  publicationDate DateTime?
-  isbn            String?  @unique @db.VarChar(20)
-  category        String?  @db.VarChar(100)
-  language        String?  @db.VarChar(50)
-  tags            String[] @default([])
-  pageCount       Int?
-  rights          String?  @db.VarChar(255)
-  coverImageUrl   String?  @db.VarChar(500)
-  bookFileUrl     String   @db.VarChar(500)
-  isPublished     Boolean  @default(false)
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id          String   @id @default(cuid())
+  title       String
+  author      String
+  isbn        String   @unique
+  tags        String[] // array of tags like ["fiction", "history"]
+  description String?
+  publishedAt DateTime?
+  coverImage  String?  
+  bookFile    String?   // <-- This matches your controller now
 
-  @@map("books")
+  userId      String? 
+  user        User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
+
+

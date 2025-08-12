@@ -20,7 +20,8 @@ class AuthController {
         lastName,
         password,
          ...(email && { email }),
-        ...(phone && { phone })
+        ...(phone && { phone }),
+        role: role || 'USER' // Default to USER if no role provided
       };
 
       if (email) {
