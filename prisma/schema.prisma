@@ -178,5 +178,11 @@ model Book {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+model Audio {
+  id        String   @id @default(cuid())
+  publicId  String
+  fileUrl   String
+  createdAt DateTime @default(now())
+}
 
 
