@@ -181,8 +181,14 @@ model Book {
 }
 model Audio {
   id        String   @id @default(cuid())
-  publicId  String
+  title       String?
+  description String?
+  tags        String[] @default([])
+  fileName    String
+  publicId  String?
   fileUrl   String
+  user      User?@relation(fields: [userId], references: [id],onDelete:Cascade)
+  userId    String?
   createdAt DateTime @default(now())
 }
 
