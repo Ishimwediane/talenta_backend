@@ -1,10 +1,13 @@
 import express from "express";
-import upload from "@/middleware/upload";
-import { uploadAudio, getAllAudios } from "@/controllers/audioController";
+import { uploadAudioMiddleware } from "../middleware/uploadAudioMiddleware.js";
+import { uploadAudio, playAudio } from "../controllers/audio.controller.js";
 
 const router = express.Router();
 
-router.post("/upload", upload.single("audio"), uploadAudio);
-router.get("/all", getAllAudios);
+// Upload audio
+router.post("/upload", uploadAudioMiddleware.single("audio"), uploadAudio);
+
+// Play audio
+router.get("/play/:filename", playAudio);
 
 export default router;

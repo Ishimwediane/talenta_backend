@@ -46,6 +46,7 @@ model User {
   // Relations
   contents             Content[]
   books Book[]
+  audio Audio[]
 
 
   @@map("users")

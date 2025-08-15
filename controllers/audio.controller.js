@@ -1,47 +1,49 @@
-import fs from "fs";
 import path from "path";
-import cloudinary from "@/lib/cloudinary";
-import prisma from "@/lib/prisma";
+import fs from "fs";
 
-export const uploadAudio = async (req, res) => {
+// @desc Upload an audio file
+export const uploadAudio = (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
+      return res.status(400).json({ message: "No audio file uploaded" });
     }
 
-    // Local path saved by Multer
-    const filePath = path.join(process.cwd(), req.file.path);
-
-    // Upload to Cloudinary
-    const cloudinaryRes = await cloudinary.uploader.upload(filePath, {
-      resource_type: "video", // for audio
-      folder: "talenta_audios",
+    return res.status(200).json({
+      message: "Audio uploaded successfully",
+      file: {
+        originalName: req.file.originalname,
+        fileName: req.file.filename,
+        mimeType: req.file.mimetype,
+        size: req.file.size,
+        path: `/uploads/audio/${req.file.filename}`
+      }
     });
-
-    // Remove local file after upload
-    fs.unlinkSync(filePath);
-
-    // Save to Postgres
-    const audio = await prisma.audio.create({
-      data: {
-        publicId: cloudinaryRes.public_id,
-        fileUrl: cloudinaryRes.secure_url,
-      },
-    });
-
-    res.status(200).json(audio);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Error uploading audio:", error);
+    res.status(500).json({ message: "Server error while uploading audio" });
   }
 };
 
-export const getAllAudios = async (req, res) => {
+// @desc Play audio (streaming)
+export const playAudio = (req, res) => {
   try {
-    const audios = await prisma.audio.findMany({
-      orderBy: { createdAt: "desc" },
+    const { filename } = req.params;
+    const filePath = path.join("uploads/audio", filename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: "Audio file not found" });
+    }
+
+    const stat = fs.statSync(filePath);
+    res.writeHead(200, {
+      "Content-Type": "audio/mpeg",
+      "Content-Length": stat.size
     });
-    res.status(200).json(audios);
+
+    const readStream = fs.createReadStream(filePath);
+    readStream.pipe(res);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Error playing audio:", error);
+    res.status(500).json({ message: "Server error while playing audio" });
   }
 };
