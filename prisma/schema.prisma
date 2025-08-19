@@ -162,27 +162,41 @@ enum Interest {
   ENTERTAINMENT
 }
 
+enum BookStatus {
+  DRAFT
+  PUBLISHED
+}
 model Book {
   id          String   @id @default(cuid())
   title       String
   author      String
-  isbn        String   @unique
+  isbn        String?   @unique
   tags        String[] // array of tags like ["fiction", "history"]
   description String?
   publishedAt DateTime?
   coverImage  String?  
-  bookFile    String?   // <-- This matches your controller now
+  bookFile    String?   
 
+  content     String?      // To store the rich text (HTML) from the editor
+  status      BookStatus @default(DRAFT) // Default new books to DRAFT
+  
   userId      String? 
   user        User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+enum AudioStatus {
+  DRAFT
+PUBLISHED
+}
+
 model Audio {
   id        String   @id @default(cuid())
   title       String?
   description String?
+  status      AudioStatus @default(DRAFT) 
   tags        String[] @default([])
   fileName    String
   publicId  String?
