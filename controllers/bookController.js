@@ -1,31 +1,112 @@
+// controllers/bookController.js
+
 import prisma from '../prismaClient.js';
+import { v2 as cloudinary } from 'cloudinary';
 
-// No longer 'uploadBook', but a more general 'createBook'
-export const createBook = async (req, res) => {
+import axios from 'axios';
+
+import { extractContentFromUrl } from '../services/contentExtractor.js'; // <-- THE FIX IS HERE
+
+// GET all PUBLISHED books for the public
+export const getPublishedBooks = async (req, res) => {
   try {
-    const { title, author, description, isbn, tags, content, status } = req.body;
-    const userId = req.user.id; // From authenticateToken middleware
+    const books = await prisma.book.findMany({
+      where: { status: 'PUBLISHED' },
+      orderBy: { publishedAt: 'desc' },
+    });
+    res.status(200).json(books);
+  } catch (error) {
+    console.error('🔥 getPublishedBooks error:', error);
+    res.status(500).json({ error: 'Failed to retrieve books.' });
+  }
+};
 
-    if (!title) {
-      return res.status(400).json({ error: 'Title is required.' });
+// GET all of logged-in user's books (drafts and published)
+export const getMyBooks = async (req, res) => {
+    try {
+        const books = await prisma.book.findMany({
+            where: { userId: req.user.id },
+            orderBy: { updatedAt: 'desc' }
+        });
+        res.status(200).json(books);
+    } catch (error) {
+        console.error('🔥 getMyBooks error:', error);
+        res.status(500).json({ error: 'Failed to retrieve your books.' });
+    }
+}
+
+// GET a single book by ID for editing
+export const getBookById = async (req, res) => {
+  try {
+    const query = { id: req.params.id };
+
+    // Only filter by userId if the user is logged in
+    if (req.user) {
+      query.userId = req.user.id;
     }
 
-    // Use the cover image from the file upload if it exists
-    const coverImageUrl = req.file
-      ? `/uploads/books/${req.file.filename}`
-      : null;
+    const book = await prisma.book.findFirst({
+      where: query,
+    });
+
+    if (!book) {
+      return res.status(404).json({ error: 'Book not found or you do not have permission.' });
+    }
+
+    res.status(200).json(book);
+  } catch (error) {
+    console.error('🔥 getBookById error:', error);
+    res.status(500).json({ error: 'Failed to retrieve book.' });
+  }
+};
+
+
+// POST a new book
+export const createBook = async (req, res) => {
+  try {
+    let { title, author, description, isbn, tags, content, status } = req.body;
+
+    const coverImageFile = req.files?.coverImage?.[0];
+    const bookFile = req.files?.bookFile?.[0];
+
+    const coverImageUrl = coverImageFile?.path;
+    const coverImagePublicId = coverImageFile?.filename;
+
+    // Book file URLs
+    const bookFileUrl = bookFile?.path;
+    const bookFilePublicId = bookFile?.filename;
+
+    // Generate readUrl and downloadUrl
+    let readUrl = null;
+    let downloadUrl = null;
+    if (bookFileUrl) {
+      readUrl = bookFileUrl.replace('/upload/', '/upload/fl_attachment:false/'); // inline
+      downloadUrl = bookFileUrl; // default raw URL for download
+    }
+
+    if (!title) return res.status(400).json({ error: 'Title is required.' });
+
+    if (bookFileUrl && !content) {
+      console.log(`Extracting content from: ${bookFileUrl}`);
+      content = await extractContentFromUrl(bookFileUrl);
+    }
 
     const book = await prisma.book.create({
       data: {
         title,
-        author: author || 'Unknown Author', // Author might not be set for an initial draft
+        author: author || 'Unknown Author',
         description,
-        isbn,
+        isbn: isbn || null,
         tags: tags ? JSON.parse(tags) : [],
-        content,
-        status: status || 'DRAFT', // Default to DRAFT if not specified
+        content: content || '',
+        status: status || 'DRAFT',
+        userId: req.user.id,
         coverImage: coverImageUrl,
-        userId: userId, // Link the book to the logged-in user
+        coverImagePublicId: coverImagePublicId,
+        bookFile: bookFileUrl,
+        bookFilePublicId: bookFilePublicId,
+        readUrl,
+        downloadUrl,
       },
     });
 
@@ -36,46 +117,53 @@ export const createBook = async (req, res) => {
   }
 };
 
+
+// PUT (update) an existing book
 export const updateBook = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, author, description, isbn, tags, content, status } = req.body;
-    const userId = req.user.id;
+    let { title, author, description, isbn, tags, content, status } = req.body;
 
-    // First, find the book to ensure the user owns it
-    const existingBook = await prisma.book.findUnique({
-      where: { id },
-    });
+    const existingBook = await prisma.book.findFirst({ where: { id, userId: req.user.id } });
+    if (!existingBook) return res.status(404).json({ error: "Book not found or you don't have permission." });
 
-    if (!existingBook) {
-      return res.status(404).json({ error: 'Book not found.' });
+    const dataToUpdate = {
+      title,
+      author,
+      description,
+      content,
+      status,
+      isbn: isbn || null,
+      tags: tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : undefined,
+    };
+
+    const coverImageFile = req.files?.coverImage?.[0];
+    const bookFile = req.files?.bookFile?.[0];
+
+    if (coverImageFile) {
+      if (existingBook.coverImagePublicId) await cloudinary.uploader.destroy(existingBook.coverImagePublicId);
+      dataToUpdate.coverImage = coverImageFile.path;
+      dataToUpdate.coverImagePublicId = coverImageFile.filename;
     }
 
-    if (existingBook.userId !== userId) {
-      return res.status(403).json({ error: 'Forbidden: You do not own this book.' });
+    if (bookFile) {
+      if (existingBook.bookFilePublicId) await cloudinary.uploader.destroy(existingBook.bookFilePublicId, { resource_type: 'raw' });
+      dataToUpdate.bookFile = bookFile.path;
+      dataToUpdate.bookFilePublicId = bookFile.filename;
+
+      // Update readUrl and downloadUrl
+      dataToUpdate.readUrl = bookFile.path.replace('/upload/', '/upload/fl_attachment:false/');
+      dataToUpdate.downloadUrl = bookFile.path;
+
+      console.log(`Extracting content from new file: ${bookFile.path}`);
+      dataToUpdate.content = await extractContentFromUrl(bookFile.path);
     }
 
-    const coverImageUrl = req.file
-      ? `/uploads/books/${req.file.filename}`
-      : undefined; // Use undefined to avoid overwriting with null
+    if (status === 'PUBLISHED' && !existingBook.publishedAt) {
+      dataToUpdate.publishedAt = new Date();
+    }
 
-    const updatedBook = await prisma.book.update({
-      where: {
-        id,
-      },
-      data: {
-        title,
-        author,
-        description,
-        isbn,
-        tags: tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : undefined,
-        content,
-        status, // This is how you publish a book (by setting status to 'PUBLISHED')
-        coverImage: coverImageUrl,
-        publishedAt: status === 'PUBLISHED' && !existingBook.publishedAt ? new Date() : undefined,
-      },
-    });
-
+    const updatedBook = await prisma.book.update({ where: { id }, data: dataToUpdate });
     res.status(200).json(updatedBook);
   } catch (error) {
     console.error('🔥 updateBook error:', error);
@@ -83,40 +171,31 @@ export const updateBook = async (req, res) => {
   }
 };
 
-
-// Gets all PUBLISHED books for the public
-export const getPublishedBooks = async (req, res) => {
+// DELETE a book
+export const deleteBook = async (req, res) => {
   try {
-    const books = await prisma.book.findMany({
-      where: {
-        status: 'PUBLISHED',
-      },
-      orderBy: {
-        publishedAt: 'desc',
-      },
-    });
-    res.status(200).json(books);
+    const { id } = req.params;
+    const bookToDelete = await prisma.book.findFirst({ where: { id, userId: req.user.id } });
+    
+    if (!bookToDelete) {
+      return res.status(404).json({ error: "Book not found or you don't have permission." });
+    }
+
+    if (bookToDelete.coverImagePublicId) {
+        await cloudinary.uploader.destroy(bookToDelete.coverImagePublicId);
+    }
+    if (bookToDelete.bookFilePublicId) {
+        await cloudinary.uploader.destroy(bookToDelete.bookFilePublicId, { resource_type: 'raw' });
+    }
+
+    await prisma.book.delete({ where: { id } });
+    res.status(200).json({ message: 'Book deleted successfully.' });
   } catch (error) {
-    console.error('🔥 getPublishedBooks error:', error);
-    res.status(500).json({ error: 'Failed to retrieve books.' });
+    console.error('🔥 deleteBook error:', error);
+    res.status(500).json({ error: 'Failed to delete book.' });
   }
 };
 
-// Gets all books (drafts and published) for the logged-in user
-export const getMyBooks = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const books = await prisma.book.findMany({
-            where: {
-                userId: userId,
-            },
-            orderBy: {
-                updatedAt: 'desc',
-            }
-        });
-        res.status(200).json(books);
-    } catch (error) {
-        console.error('🔥 getMyBooks error:', error);
-        res.status(500).json({ error: 'Failed to retrieve your books.' });
-    }
-}
+
+
+

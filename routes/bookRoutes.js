@@ -1,39 +1,39 @@
 import express from 'express';
-import upload from '../middleware/uploadMiddleware.js';
+// import upload from '../middleware/uploadMiddleware.js'; // Old import
+import { bookUpload } from '../middleware/uploadMiddleware.js'; // New import
 import {
   createBook,
   updateBook,
   getPublishedBooks,
-  getMyBooks
+  getMyBooks,
+  getBookById,
+  deleteBook
 } from '../controllers/bookController.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
+import { tryAuthenticateToken } from '../middleware/tryAuthenticateToken.js';
+import { readBook, downloadBook } from '../controllers/bookFileController.js';
 
 const router = express.Router();
 
+// Middleware for handling cover and book file uploads to Cloudinary
+const bookUploadMiddleware = bookUpload.fields([
+  { name: 'coverImage', maxCount: 1 },
+  { name: 'bookFile', maxCount: 1 },
+]);
+
 // --- Public Route ---
-// GET /api/books -> Gets all PUBLISHED books
 router.get('/', getPublishedBooks);
 
 // --- Authenticated Routes ---
-
-// GET /api/books/my-books -> Gets all books (drafts included) for the logged-in user
 router.get('/my-books', authenticateToken, getMyBooks);
+router.get('/:id', tryAuthenticateToken, getBookById);
+router.post('/', authenticateToken, bookUploadMiddleware, createBook);
+router.put('/:id', authenticateToken, bookUploadMiddleware, updateBook);
+router.delete('/:id', authenticateToken, deleteBook);
 
-// POST /api/books -> Create a new book (as a draft by default)
-router.post(
-  '/',
-  authenticateToken,
-  // We only expect a cover image now, not a book file
-  upload.single('coverImage'),
-  createBook
-);
 
-// PUT /api/books/:id -> Update a book (save changes, or publish it)
-router.put(
-  '/:id',
-  authenticateToken,
-  upload.single('coverImage'),
-  updateBook
-);
+router.get('/read/:filename', readBook);
 
+// Route for downloading book
+router.get('/download/:filename', downloadBook);
 export default router;

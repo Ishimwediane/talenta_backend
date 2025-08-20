@@ -174,10 +174,17 @@ model Book {
   tags        String[] // array of tags like ["fiction", "history"]
   description String?
   publishedAt DateTime?
-  coverImage  String?  
-  bookFile    String?   
 
-  content     String?      // To store the rich text (HTML) from the editor
+
+  coverImage  String?  
+  coverImagePublicId String?
+  bookFile    String?
+  bookFilePublicId   String?  
+readUrl           String?   // for reading inline
+  downloadUrl       String?   // for downloading
+
+
+  content     String?   @db.Text   // To store the rich text (HTML) from the editor
   status      BookStatus @default(DRAFT) // Default new books to DRAFT
   
   userId      String? 
