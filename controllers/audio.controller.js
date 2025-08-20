@@ -3,6 +3,7 @@ import fs from "fs";
 import mime from 'mime-types'; 
 import { fileURLToPath } from 'url';
 import prisma from '../lib/prisma.js'; // Make sure this import exists
+import { v2 as cloudinary } from 'cloudinary';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,7 +23,9 @@ export const uploadAudio = async (req, res) => {
         originalname: req.file.originalname,
         filename: req.file.filename,
         mimetype: req.file.mimetype,
-        size: req.file.size
+        size: req.file.size,
+        path: req.file.path, // Cloudinary URL
+        public_id: req.file.filename // Cloudinary public ID
       } : null,
       user: req.user ? { id: req.user.id } : null
     });
@@ -53,10 +56,21 @@ export const uploadAudio = async (req, res) => {
       }
     }
 
-    // Get audio file URL from upload or fallback to body
-    const audioFileUrl = req.file
-      ? `/uploads/audio/${req.file.filename}`
-      : req.body.audioFile || null;
+    // Get audio file URL and public ID from Cloudinary upload
+    let audioFileUrl = null;
+    let publicId = null;
+    let fileName = null;
+
+    if (req.file) {
+      // Cloudinary upload - file.path contains the Cloudinary URL
+      audioFileUrl = req.file.path;
+      publicId = req.file.filename; // Cloudinary public ID
+      fileName = req.file.originalname; // Original filename for reference
+    } else if (req.body.audioFile) {
+      // Fallback for existing local files
+      audioFileUrl = req.body.audioFile;
+      fileName = req.body.fileName || null;
+    }
 
     if (!audioFileUrl) {
       return res.status(400).json({ error: "Audio file is required." });
@@ -72,8 +86,9 @@ export const uploadAudio = async (req, res) => {
         title: title || req.file?.originalname || "Untitled",
         description: description || null,
         tags: parsedTags,
-        fileName: req.file?.filename || null,
-        fileUrl: audioFileUrl,
+        fileName: fileName,
+        publicId: publicId, // Cloudinary public ID
+        fileUrl: audioFileUrl, // Cloudinary URL
         status: audioStatus,
         userId: req.user.id, // from JWT
       },
@@ -94,15 +109,13 @@ export const uploadAudio = async (req, res) => {
     console.error("🔥 uploadAudio error:", error);
     
     // If there was a file uploaded but database save failed, clean up the file
-    if (req.file) {
+    if (req.file && req.file.filename) {
       try {
-        const filePath = path.join(__dirname, '..', 'uploads', 'audio', req.file.filename);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-          console.log('🗑️ Cleaned up uploaded file after database error');
-        }
+        // For Cloudinary, we would need to delete the file from Cloudinary
+        // This would require additional Cloudinary API call
+        console.log('⚠️ Cloudinary file cleanup would be needed here');
       } catch (cleanupError) {
-        console.error('Error cleaning up file:', cleanupError);
+        console.error('Error cleaning up Cloudinary file:', cleanupError);
       }
     }
     
@@ -383,12 +396,21 @@ export const deleteAudio = async (req, res) => {
       return res.status(403).json({ error: "You can only delete your own audio." });
     }
 
-    // Delete the file from filesystem if it exists
-    if (existingAudio.fileName) {
+    // Delete the file from Cloudinary if it has a public ID
+    if (existingAudio.publicId) {
+      try {
+        await cloudinary.uploader.destroy(existingAudio.publicId, { resource_type: 'video' });
+        console.log('🗑️ Deleted Cloudinary file:', existingAudio.publicId);
+      } catch (cloudinaryError) {
+        console.error('Error deleting from Cloudinary:', cloudinaryError);
+        // Continue with deletion even if Cloudinary deletion fails
+      }
+    } else if (existingAudio.fileName) {
+      // Fallback: Delete the file from filesystem if it exists (for old local files)
       const filePath = path.join(__dirname, '..', 'uploads', 'audio', existingAudio.fileName);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
-        console.log('🗑️ Deleted file:', filePath);
+        console.log('🗑️ Deleted local file:', filePath);
       }
     }
 

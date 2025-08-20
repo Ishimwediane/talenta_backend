@@ -3,6 +3,7 @@
 import axios from 'axios';
 import EPub from 'node-epub';
 import path from 'path';
+import mammoth from 'mammoth';
 
 // Helper to get file extension from a URL
 const getFileExtension = (url) => {
@@ -24,6 +25,26 @@ export const extractContentFromUrl = async (fileUrl) => {
       console.log('[EXTRACTOR] Parsing as .txt file.');
       const response = await axios.get(fileUrl, { responseType: 'text' });
       return response.data;
+    }
+
+    // --- .DOCX Handler ---
+    if (extension === '.docx') {
+      console.log('[EXTRACTOR] Parsing as .docx file using mammoth.');
+      try {
+        const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+        const result = await mammoth.extractRawText({ buffer: response.data });
+        return result.value;
+      } catch (error) {
+        console.error('[EXTRACTOR] Error parsing DOCX file:', error);
+        return null;
+      }
+    }
+
+    // --- .PDF Handler ---
+    if (extension === '.pdf') {
+      console.log('[EXTRACTOR] PDF extraction not yet implemented.');
+      console.warn('[EXTRACTOR] PDF content extraction is not supported yet. Please convert to DOCX or TXT.');
+      return null;
     }
 
     // --- .EPUB Handler (with Timeout) ---
@@ -76,6 +97,7 @@ export const extractContentFromUrl = async (fileUrl) => {
 
     // --- Fallback for unsupported types ---
     console.warn(`[EXTRACTOR] Unsupported file type for content extraction: ${extension}`);
+    console.warn('[EXTRACTOR] Supported formats: .txt, .docx, .epub');
     return null;
 
   } catch (error) {

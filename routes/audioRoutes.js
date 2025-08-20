@@ -13,20 +13,21 @@ import {
   deleteAudio 
 } from "../controllers/audio.controller.js";
 import { authenticateToken } from "../middleware/auth.middleware.js";
+import { audioUpload } from "../middleware/uploadMiddleware.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
-// Ensure upload directory exists
+// Ensure upload directory exists (for backward compatibility with existing files)
 const uploadDir = path.join(__dirname, '..', 'uploads', 'audio');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
   console.log('📁 Created upload directory:', uploadDir);
 }
 
-// Configure multer for audio uploads
+// Configure multer for local storage (fallback for existing files)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadDir);
@@ -42,7 +43,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({
+const localUpload = multer({
   storage,
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB limit
@@ -103,13 +104,13 @@ const handleMulterError = (error, req, res, next) => {
 // Protected routes - more specific patterns first
 // router.get("/user/all", authenticateToken, getUserAudios);        // Get user's all audios (published + drafts)
 router.get("/user/drafts", authenticateToken, getUserDrafts);     // Get user's drafts only
-router.post("/upload", authenticateToken, upload.single('audio'), handleMulterError, uploadAudio);
+router.post("/upload", authenticateToken, audioUpload.single('audio'), handleMulterError, uploadAudio);
 // router.patch("/:id", authenticateToken, updateAudio);            // Update audio (title, description, tags, status)
 router.patch("/:id/publish", authenticateToken, updateAudioStatus); // Backward compatibility - publish draft
 router.delete("/:id", authenticateToken, deleteAudio);
 
 // Public routes - after protected routes
-router.get("/play/:filename", playAudio);        // Stream audio file
+router.get("/play/:filename", playAudio);        // Stream audio file (for backward compatibility)
 router.get("/:id", getAudioById);               // Get audio by ID (public for published, private for drafts)
 router.get("/", getAllAudios);                  // Get all published audios
 
