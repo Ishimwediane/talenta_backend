@@ -172,6 +172,7 @@ model Book {
   author      String
   isbn        String?   @unique
   tags        String[] // array of tags like ["fiction", "history"]
+  subCategories String[] @default([])
   description String?
   publishedAt DateTime?
 
@@ -186,6 +187,7 @@ readUrl           String?   // for reading inline
 
   content     String?   @db.Text   // To store the rich text (HTML) from the editor
   status      BookStatus @default(DRAFT) // Default new books to DRAFT
+  category    String?   @db.VarChar(100)
   
   userId      String? 
   user        User? @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -205,9 +207,11 @@ model Audio {
   description String?
   status      AudioStatus @default(DRAFT) 
   tags        String[] @default([])
+  subCategories String[] @default([])
   fileName    String
   publicId  String?
   fileUrl   String
+  category  String?   @db.VarChar(100)
   user      User?@relation(fields: [userId], references: [id],onDelete:Cascade)
   userId    String?
   createdAt DateTime @default(now())

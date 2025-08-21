@@ -30,7 +30,7 @@ export const uploadAudio = async (req, res) => {
       user: req.user ? { id: req.user.id } : null
     });
 
-    const { title, description, tags, status } = req.body;
+    const { title, description, tags, subCategories, status, category } = req.body;
 
     // Check if user is authenticated
     if (!req.user || !req.user.id) {
@@ -53,6 +53,20 @@ export const uploadAudio = async (req, res) => {
         }
       } else if (Array.isArray(tags)) {
         parsedTags = tags;
+      }
+    }
+
+    // Parse subCategories (support string or array)
+    let parsedSubCategories = [];
+    if (subCategories) {
+      if (typeof subCategories === "string") {
+        try {
+          parsedSubCategories = JSON.parse(subCategories);
+        } catch {
+          parsedSubCategories = subCategories.split(",").map(s => s.trim()).filter(Boolean);
+        }
+      } else if (Array.isArray(subCategories)) {
+        parsedSubCategories = subCategories;
       }
     }
 
@@ -86,10 +100,12 @@ export const uploadAudio = async (req, res) => {
         title: title || req.file?.originalname || "Untitled",
         description: description || null,
         tags: parsedTags,
+        subCategories: parsedSubCategories,
         fileName: fileName,
         publicId: publicId, // Cloudinary public ID
         fileUrl: audioFileUrl, // Cloudinary URL
         status: audioStatus,
+        category: category || null,
         userId: req.user.id, // from JWT
       },
       include: {
@@ -143,8 +159,13 @@ export const updateAudioStatus = async (req, res) => {
       return res.status(401).json({ error: "User not authenticated." });
     }
 
-    // Validate status
-    if (!['DRAFT', 'PUBLISHED'].includes(status)) {
+    // Validate and normalize status
+    const normalizedStatus = (status || '').toString().toUpperCase();
+    const mappedStatus = normalizedStatus === 'DRAFT' || normalizedStatus === 'PUBLISHED'
+      ? normalizedStatus
+      : (status === 'draft' ? 'DRAFT' : status === 'published' ? 'PUBLISHED' : null);
+
+    if (!mappedStatus) {
       return res.status(400).json({ error: "Invalid status. Must be 'draft' or 'published'." });
     }
 
@@ -163,7 +184,7 @@ export const updateAudioStatus = async (req, res) => {
 
     const updatedAudio = await prisma.audio.update({
       where: { id },
-      data: { status },
+      data: { status: mappedStatus },
       include: {
         user: {
           select: {
@@ -177,7 +198,7 @@ export const updateAudioStatus = async (req, res) => {
 
     console.log('✅ Audio status updated successfully:', updatedAudio.id);
     res.status(200).json({ 
-      message: `Audio ${status === 'PUBLISHED' ? 'PUBLISHED' : 'saved as draft'} successfully`, 
+      message: `Audio ${mappedStatus === 'PUBLISHED' ? 'PUBLISHED' : 'saved as draft'} successfully`, 
       audio: updatedAudio 
     });
   } catch (error) {
@@ -285,9 +306,22 @@ export const playAudio = (req, res) => {
 
 export const getAllAudios = async (req, res) => {
   try {
-    console.log('📋 Fetching all audios...');
-    
+    console.log('📋 Fetching audios...');
+
+    const { published, category, subCategory } = req.query;
+    const whereClause = {};
+    if (published === 'true') {
+      whereClause.status = 'PUBLISHED';
+    }
+    if (category) {
+      whereClause.category = { equals: category, mode: 'insensitive' };
+    }
+    if (subCategory) {
+      whereClause.subCategories = { has: subCategory };
+    }
+
     const audios = await prisma.audio.findMany({
+      where: whereClause,
       orderBy: { createdAt: "desc" },
       include: {
         user: {
@@ -351,7 +385,7 @@ export const getUserDrafts = async (req, res) => {
     const drafts = await prisma.audio.findMany({
       where: { 
         userId: req.user.id,
-        status: 'draft'
+        status: 'DRAFT'
       },
       orderBy: { createdAt: "desc" },
       include: {

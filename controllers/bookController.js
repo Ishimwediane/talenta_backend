@@ -10,8 +10,17 @@ import { extractContentFromUrl } from '../services/contentExtractor.js'; // <-- 
 // GET all PUBLISHED books for the public
 export const getPublishedBooks = async (req, res) => {
   try {
+    const { category, subCategory } = req.query;
+    const whereClause = { status: 'PUBLISHED' };
+    if (category) {
+      whereClause.category = { equals: category, mode: 'insensitive' };
+    }
+    if (subCategory) {
+      whereClause.subCategories = { has: subCategory };
+    }
+
     const books = await prisma.book.findMany({
-      where: { status: 'PUBLISHED' },
+      where: whereClause,
       orderBy: { publishedAt: 'desc' },
     });
     res.status(200).json(books);
@@ -64,7 +73,7 @@ export const getBookById = async (req, res) => {
 // POST a new book
 export const createBook = async (req, res) => {
   try {
-    let { title, author, description, isbn, tags, content, status } = req.body;
+    let { title, author, description, isbn, tags, subCategories, content, status, category } = req.body;
 
     const coverImageFile = req.files?.coverImage?.[0];
     const bookFile = req.files?.bookFile?.[0];
@@ -91,6 +100,20 @@ export const createBook = async (req, res) => {
       content = await extractContentFromUrl(bookFileUrl);
     }
 
+    // Parse subCategories if present
+    let parsedSubCategories = [];
+    if (subCategories) {
+      if (typeof subCategories === 'string') {
+        try {
+          parsedSubCategories = JSON.parse(subCategories);
+        } catch {
+          parsedSubCategories = subCategories.split(',').map((s) => s.trim()).filter(Boolean);
+        }
+      } else if (Array.isArray(subCategories)) {
+        parsedSubCategories = subCategories;
+      }
+    }
+
     const book = await prisma.book.create({
       data: {
         title,
@@ -98,8 +121,10 @@ export const createBook = async (req, res) => {
         description,
         isbn: isbn || null,
         tags: tags ? JSON.parse(tags) : [],
+        subCategories: parsedSubCategories,
         content: content || '',
         status: status || 'DRAFT',
+        category: category || null,
         userId: req.user.id,
         coverImage: coverImageUrl,
         coverImagePublicId: coverImagePublicId,
@@ -122,7 +147,7 @@ export const createBook = async (req, res) => {
 export const updateBook = async (req, res) => {
   try {
     const { id } = req.params;
-    let { title, author, description, isbn, tags, content, status } = req.body;
+    let { title, author, description, isbn, tags, subCategories, content, status, category } = req.body;
 
     const existingBook = await prisma.book.findFirst({ where: { id, userId: req.user.id } });
     if (!existingBook) return res.status(404).json({ error: "Book not found or you don't have permission." });
@@ -135,6 +160,8 @@ export const updateBook = async (req, res) => {
       status,
       isbn: isbn || null,
       tags: tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : undefined,
+      subCategories: subCategories ? (typeof subCategories === 'string' ? (subCategories.startsWith('[') ? JSON.parse(subCategories) : subCategories.split(',').map((s) => s.trim()).filter(Boolean)) : subCategories) : undefined,
+      category: typeof category === 'string' ? category : undefined,
     };
 
     const coverImageFile = req.files?.coverImage?.[0];
@@ -195,6 +222,408 @@ export const deleteBook = async (req, res) => {
     res.status(500).json({ error: 'Failed to delete book.' });
   }
 };
+
+
+
+
+
+
+        userId: req.user.id,
+
+        coverImage: coverImageUrl,
+
+        coverImagePublicId: coverImagePublicId,
+
+        bookFile: bookFileUrl,
+
+        bookFilePublicId: bookFilePublicId,
+
+        readUrl,
+
+        downloadUrl,
+
+      },
+
+    });
+
+
+
+    res.status(201).json(book);
+
+  } catch (error) {
+
+    console.error('🔥 createBook error:', error);
+
+    res.status(500).json({ error: 'Failed to create book.' });
+
+  }
+
+};
+
+
+
+
+
+// PUT (update) an existing book
+
+export const updateBook = async (req, res) => {
+
+  try {
+
+    const { id } = req.params;
+
+    let { title, author, description, isbn, tags, content, status } = req.body;
+
+
+
+    const existingBook = await prisma.book.findFirst({ where: { id, userId: req.user.id } });
+
+    if (!existingBook) return res.status(404).json({ error: "Book not found or you don't have permission." });
+
+
+
+    const dataToUpdate = {
+
+      title,
+
+      author,
+
+      description,
+
+      content,
+
+      status,
+
+      isbn: isbn || null,
+
+      tags: tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : undefined,
+
+    };
+
+
+
+    const coverImageFile = req.files?.coverImage?.[0];
+
+    const bookFile = req.files?.bookFile?.[0];
+
+
+
+    if (coverImageFile) {
+
+      if (existingBook.coverImagePublicId) await cloudinary.uploader.destroy(existingBook.coverImagePublicId);
+
+      dataToUpdate.coverImage = coverImageFile.path;
+
+      dataToUpdate.coverImagePublicId = coverImageFile.filename;
+
+    }
+
+
+
+    if (bookFile) {
+
+      if (existingBook.bookFilePublicId) await cloudinary.uploader.destroy(existingBook.bookFilePublicId, { resource_type: 'raw' });
+
+      dataToUpdate.bookFile = bookFile.path;
+
+      dataToUpdate.bookFilePublicId = bookFile.filename;
+
+
+
+      // Update readUrl and downloadUrl
+
+      dataToUpdate.readUrl = bookFile.path.replace('/upload/', '/upload/fl_attachment:false/');
+
+      dataToUpdate.downloadUrl = bookFile.path;
+
+
+
+      console.log(`Extracting content from new file: ${bookFile.path}`);
+
+      dataToUpdate.content = await extractContentFromUrl(bookFile.path);
+
+    }
+
+
+
+    if (status === 'PUBLISHED' && !existingBook.publishedAt) {
+
+      dataToUpdate.publishedAt = new Date();
+
+    }
+
+
+
+    const updatedBook = await prisma.book.update({ where: { id }, data: dataToUpdate });
+
+    res.status(200).json(updatedBook);
+
+  } catch (error) {
+
+    console.error('🔥 updateBook error:', error);
+
+    res.status(500).json({ error: 'Failed to update book.' });
+
+  }
+
+};
+
+
+
+// DELETE a book
+
+export const deleteBook = async (req, res) => {
+
+  try {
+
+    const { id } = req.params;
+
+    const bookToDelete = await prisma.book.findFirst({ where: { id, userId: req.user.id } });
+
+    
+
+    if (!bookToDelete) {
+
+      return res.status(404).json({ error: "Book not found or you don't have permission." });
+
+    }
+
+
+
+    if (bookToDelete.coverImagePublicId) {
+
+        await cloudinary.uploader.destroy(bookToDelete.coverImagePublicId);
+
+    }
+
+    if (bookToDelete.bookFilePublicId) {
+
+        await cloudinary.uploader.destroy(bookToDelete.bookFilePublicId, { resource_type: 'raw' });
+
+    }
+
+
+
+    await prisma.book.delete({ where: { id } });
+
+    res.status(200).json({ message: 'Book deleted successfully.' });
+
+  } catch (error) {
+
+    console.error('🔥 deleteBook error:', error);
+
+    res.status(500).json({ error: 'Failed to delete book.' });
+
+  }
+
+};
+
+
+
+
+
+
+
+
+
+
+
+
+        userId: req.user.id,
+
+        coverImage: coverImageUrl,
+
+        coverImagePublicId: coverImagePublicId,
+
+        bookFile: bookFileUrl,
+
+        bookFilePublicId: bookFilePublicId,
+
+        readUrl,
+
+        downloadUrl,
+
+      },
+
+    });
+
+
+
+    res.status(201).json(book);
+
+  } catch (error) {
+
+    console.error('🔥 createBook error:', error);
+
+    res.status(500).json({ error: 'Failed to create book.' });
+
+  }
+
+};
+
+
+
+
+
+// PUT (update) an existing book
+
+export const updateBook = async (req, res) => {
+
+  try {
+
+    const { id } = req.params;
+
+    let { title, author, description, isbn, tags, content, status } = req.body;
+
+
+
+    const existingBook = await prisma.book.findFirst({ where: { id, userId: req.user.id } });
+
+    if (!existingBook) return res.status(404).json({ error: "Book not found or you don't have permission." });
+
+
+
+    const dataToUpdate = {
+
+      title,
+
+      author,
+
+      description,
+
+      content,
+
+      status,
+
+      isbn: isbn || null,
+
+      tags: tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : undefined,
+
+    };
+
+
+
+    const coverImageFile = req.files?.coverImage?.[0];
+
+    const bookFile = req.files?.bookFile?.[0];
+
+
+
+    if (coverImageFile) {
+
+      if (existingBook.coverImagePublicId) await cloudinary.uploader.destroy(existingBook.coverImagePublicId);
+
+      dataToUpdate.coverImage = coverImageFile.path;
+
+      dataToUpdate.coverImagePublicId = coverImageFile.filename;
+
+    }
+
+
+
+    if (bookFile) {
+
+      if (existingBook.bookFilePublicId) await cloudinary.uploader.destroy(existingBook.bookFilePublicId, { resource_type: 'raw' });
+
+      dataToUpdate.bookFile = bookFile.path;
+
+      dataToUpdate.bookFilePublicId = bookFile.filename;
+
+
+
+      // Update readUrl and downloadUrl
+
+      dataToUpdate.readUrl = bookFile.path.replace('/upload/', '/upload/fl_attachment:false/');
+
+      dataToUpdate.downloadUrl = bookFile.path;
+
+
+
+      console.log(`Extracting content from new file: ${bookFile.path}`);
+
+      dataToUpdate.content = await extractContentFromUrl(bookFile.path);
+
+    }
+
+
+
+    if (status === 'PUBLISHED' && !existingBook.publishedAt) {
+
+      dataToUpdate.publishedAt = new Date();
+
+    }
+
+
+
+    const updatedBook = await prisma.book.update({ where: { id }, data: dataToUpdate });
+
+    res.status(200).json(updatedBook);
+
+  } catch (error) {
+
+    console.error('🔥 updateBook error:', error);
+
+    res.status(500).json({ error: 'Failed to update book.' });
+
+  }
+
+};
+
+
+
+// DELETE a book
+
+export const deleteBook = async (req, res) => {
+
+  try {
+
+    const { id } = req.params;
+
+    const bookToDelete = await prisma.book.findFirst({ where: { id, userId: req.user.id } });
+
+    
+
+    if (!bookToDelete) {
+
+      return res.status(404).json({ error: "Book not found or you don't have permission." });
+
+    }
+
+
+
+    if (bookToDelete.coverImagePublicId) {
+
+        await cloudinary.uploader.destroy(bookToDelete.coverImagePublicId);
+
+    }
+
+    if (bookToDelete.bookFilePublicId) {
+
+        await cloudinary.uploader.destroy(bookToDelete.bookFilePublicId, { resource_type: 'raw' });
+
+    }
+
+
+
+    await prisma.book.delete({ where: { id } });
+
+    res.status(200).json({ message: 'Book deleted successfully.' });
+
+  } catch (error) {
+
+    console.error('🔥 deleteBook error:', error);
+
+    res.status(500).json({ error: 'Failed to delete book.' });
+
+  }
+
+};
+
+
+
+
+
+
 
 
 
