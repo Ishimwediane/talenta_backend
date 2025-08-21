@@ -308,11 +308,9 @@ export const getAllAudios = async (req, res) => {
   try {
     console.log('📋 Fetching audios...');
 
-    const { published, category, subCategory } = req.query;
-    const whereClause = {};
-    if (published === 'true') {
-      whereClause.status = 'PUBLISHED';
-    }
+    const { category, subCategory } = req.query;
+    // Public: only show published
+    const whereClause = { status: 'PUBLISHED' };
     if (category) {
       whereClause.category = { equals: category, mode: 'insensitive' };
     }
@@ -363,6 +361,13 @@ export const getAudioById = async (req, res) => {
     if (!audio) {
       console.log('❌ Audio not found:', id);
       return res.status(404).json({ error: "Audio not found." });
+    }
+
+    // If not published, only owner can access
+    if (audio.status !== 'PUBLISHED') {
+      if (!req.user || req.user.userId !== audio.userId && req.user.id !== audio.userId) {
+        return res.status(403).json({ error: 'You do not have access to this audio.' });
+      }
     }
 
     console.log('✅ Audio found:', audio.id);

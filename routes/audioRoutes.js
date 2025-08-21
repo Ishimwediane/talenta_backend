@@ -13,6 +13,7 @@ import {
   deleteAudio 
 } from "../controllers/audio.controller.js";
 import { authenticateToken } from "../middleware/auth.middleware.js";
+import { tryAuthenticateToken } from "../middleware/tryAuthenticateToken.js";
 import { audioUpload } from "../middleware/uploadMiddleware.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -111,8 +112,8 @@ router.delete("/:id", authenticateToken, deleteAudio);
 
 // Public routes - after protected routes
 router.get("/play/:filename", playAudio);        // Stream audio file (for backward compatibility)
-router.get("/:id", getAudioById);               // Get audio by ID (public for published, private for drafts)
-router.get("/", getAllAudios);                  // Get all published audios
+router.get("/:id", tryAuthenticateToken, getAudioById);               // Get audio by ID (public for published, owner for drafts)
+router.get("/", tryAuthenticateToken, getAllAudios);                  // Get published audios (optionally filtered by category)
 
 // Debug route to test uploads directory
 router.get("/debug/uploads", (req, res) => {
