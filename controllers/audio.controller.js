@@ -465,3 +465,36 @@ export const deleteAudio = async (req, res) => {
     res.status(500).json({ error: "Failed to delete audio." });
   }
 };
+
+// @desc Get all audios for authenticated user (admin panel)
+export const getUserAllAudios = async (req, res) => {
+  try {
+    console.log('📋 Fetching all audios for user:', req.user?.id);
+
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: "User not authenticated." });
+    }
+
+    const audios = await prisma.audio.findMany({
+      where: { 
+        userId: req.user.id
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true
+          }
+        }
+      }
+    });
+
+    console.log(`✅ Found ${audios.length} audios for user ${req.user.id}`);
+    res.status(200).json({ audios });
+  } catch (error) {
+    console.error("🔥 getUserAllAudios error:", error);
+    res.status(500).json({ error: "Failed to fetch audios." });
+  }
+};

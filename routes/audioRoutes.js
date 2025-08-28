@@ -10,7 +10,8 @@ import {
   getAudioById, 
  updateAudioStatus, // kept for backward compatibility
   getUserDrafts, 
-  deleteAudio 
+  deleteAudio,
+  getUserAllAudios // Added getUserAllAudios
 } from "../controllers/audio.controller.js";
 import { authenticateToken } from "../middleware/auth.middleware.js";
 import { tryAuthenticateToken } from "../middleware/tryAuthenticateToken.js";
@@ -104,6 +105,7 @@ const handleMulterError = (error, req, res, next) => {
 
 // Protected routes - more specific patterns first
 // router.get("/user/all", authenticateToken, getUserAudios);        // Get user's all audios (published + drafts)
+router.get("/user/all", authenticateToken, getUserAllAudios);     // Get user's all audios (published + drafts)
 router.get("/user/drafts", authenticateToken, getUserDrafts);     // Get user's drafts only
 router.post("/upload", authenticateToken, audioUpload.single('audio'), handleMulterError, uploadAudio);
 // router.patch("/:id", authenticateToken, updateAudio);            // Update audio (title, description, tags, status)
