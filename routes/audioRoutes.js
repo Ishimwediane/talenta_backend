@@ -11,7 +11,8 @@ import {
  updateAudioStatus, // kept for backward compatibility
   getUserDrafts, 
   deleteAudio,
-  getUserAllAudios // Added getUserAllAudios
+  getUserAllAudios, // Added for backward compatibility
+  updateAudio // Added for backward compatibility
 } from "../controllers/audio.controller.js";
 import { authenticateToken } from "../middleware/auth.middleware.js";
 import { tryAuthenticateToken } from "../middleware/tryAuthenticateToken.js";
@@ -109,6 +110,7 @@ router.get("/user/all", authenticateToken, getUserAllAudios);     // Get user's 
 router.get("/user/drafts", authenticateToken, getUserDrafts);     // Get user's drafts only
 router.post("/upload", authenticateToken, audioUpload.single('audio'), handleMulterError, uploadAudio);
 // router.patch("/:id", authenticateToken, updateAudio);            // Update audio (title, description, tags, status)
+router.patch("/:id", authenticateToken, updateAudio);             // Update audio (title, description, tags, status)
 router.patch("/:id/publish", authenticateToken, updateAudioStatus); // Backward compatibility - publish draft
 router.delete("/:id", authenticateToken, deleteAudio);
 
