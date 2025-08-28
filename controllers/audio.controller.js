@@ -207,103 +207,6 @@ export const updateAudioStatus = async (req, res) => {
   }
 };
 
-// @desc Update audio (title, description, tags, categories, status)
-export const updateAudio = async (req, res) => {
-  try {
-    console.log('📝 Update audio request:', { params: req.params, body: req.body, user: req.user?.id });
-
-    const { id } = req.params;
-    const { title, description, tags, subCategories, category, status } = req.body;
-
-    // Check if user is authenticated
-    if (!req.user || !req.user.id) {
-      return res.status(401).json({ error: "User not authenticated." });
-    }
-
-    // Check if audio exists and belongs to user
-    const existingAudio = await prisma.audio.findUnique({
-      where: { id }
-    });
-
-    if (!existingAudio) {
-      return res.status(404).json({ error: "Audio not found." });
-    }
-
-    if (existingAudio.userId !== req.user.id) {
-      return res.status(403).json({ error: "You can only update your own audio." });
-    }
-
-    // Parse tags (support string or array)
-    let parsedTags = existingAudio.tags || [];
-    if (tags !== undefined) {
-      if (typeof tags === "string") {
-        try {
-          parsedTags = JSON.parse(tags);
-        } catch {
-          parsedTags = tags.split(",").map(tag => tag.trim()).filter(Boolean);
-        }
-      } else if (Array.isArray(tags)) {
-        parsedTags = tags;
-      }
-    }
-
-    // Parse subCategories (support string or array)
-    let parsedSubCategories = existingAudio.subCategories || [];
-    if (subCategories !== undefined) {
-      if (typeof subCategories === "string") {
-        try {
-          parsedSubCategories = JSON.parse(subCategories);
-        } catch {
-          parsedSubCategories = subCategories.split(",").map(s => s.trim()).filter(Boolean);
-        }
-      } else if (Array.isArray(subCategories)) {
-        parsedSubCategories = subCategories;
-      }
-    }
-
-    // Validate and normalize status
-    let normalizedStatus = existingAudio.status;
-    if (status !== undefined) {
-      const statusStr = (status || '').toString().toUpperCase();
-      normalizedStatus = statusStr === 'DRAFT' || statusStr === 'PUBLISHED'
-        ? statusStr
-        : (status === 'draft' ? 'DRAFT' : status === 'published' ? 'PUBLISHED' : existingAudio.status);
-    }
-
-    // Build update data object
-    const updateData = {};
-    if (title !== undefined) updateData.title = title;
-    if (description !== undefined) updateData.description = description;
-    if (category !== undefined) updateData.category = category;
-    updateData.tags = parsedTags;
-    updateData.subCategories = parsedSubCategories;
-    updateData.status = normalizedStatus;
-
-    const updatedAudio = await prisma.audio.update({
-      where: { id },
-      data: updateData,
-      include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true
-          }
-        }
-      }
-    });
-
-    console.log('✅ Audio updated successfully:', updatedAudio.id);
-    res.status(200).json({ 
-      message: "Audio updated successfully", 
-      audio: updatedAudio 
-    });
-  } catch (error) {
-    console.error("🔥 updateAudio error:", error);
-    res.status(500).json({ error: "Failed to update audio." });
-  }
-};
-
 // @desc Play audio (streaming with range support)
 export const playAudio = (req, res) => {
   try {
@@ -506,6 +409,136 @@ export const getUserDrafts = async (req, res) => {
   } catch (error) {
     console.error("🔥 getUserDrafts error:", error);
     res.status(500).json({ error: "Failed to fetch drafts." });
+  }
+};
+
+// @desc Get all audios for authenticated user (admin panel)
+export const getUserAllAudios = async (req, res) => {
+  try {
+    console.log('📋 Fetching all audios for user:', req.user?.id);
+
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: "User not authenticated." });
+    }
+
+    const audios = await prisma.audio.findMany({
+      where: { 
+        userId: req.user.id
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true
+          }
+        }
+      }
+    });
+
+    console.log(`✅ Found ${audios.length} audios for user ${req.user.id}`);
+    res.status(200).json({ audios });
+  } catch (error) {
+    console.error("🔥 getUserAllAudios error:", error);
+    res.status(500).json({ error: "Failed to fetch audios." });
+  }
+};
+
+// @desc Update audio (title, description, tags, categories, status)
+export const updateAudio = async (req, res) => {
+  try {
+    console.log('📝 Update audio request:', { params: req.params, body: req.body, user: req.user?.id });
+
+    const { id } = req.params;
+    const { title, description, tags, subCategories, category, status } = req.body;
+
+    // Check if user is authenticated
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: "User not authenticated." });
+    }
+
+    // Check if audio exists and belongs to user
+    const existingAudio = await prisma.audio.findUnique({
+      where: { id }
+    });
+
+    if (!existingAudio) {
+      return res.status(404).json({ error: "Audio not found." });
+    }
+
+    if (existingAudio.userId !== req.user.id) {
+      return res.status(403).json({ error: "You can only update your own audio." });
+    }
+
+    // Parse tags (support string or array)
+    let parsedTags = existingAudio.tags || [];
+    if (tags !== undefined) {
+      if (typeof tags === "string") {
+        try {
+          parsedTags = JSON.parse(tags);
+        } catch {
+          parsedTags = tags.split(",").map(tag => tag.trim()).filter(Boolean);
+        }
+      } else if (Array.isArray(tags)) {
+        parsedTags = tags;
+      }
+    }
+
+    // Parse subCategories (support string or array)
+    let parsedSubCategories = existingAudio.subCategories || [];
+    if (subCategories !== undefined) {
+      if (typeof subCategories === "string") {
+        try {
+          parsedSubCategories = JSON.parse(subCategories);
+        } catch {
+          parsedSubCategories = subCategories.split(",").map(s => s.trim()).filter(Boolean);
+        }
+      } else if (Array.isArray(subCategories)) {
+        parsedSubCategories = subCategories;
+      }
+    }
+
+    // Validate and normalize status
+    let normalizedStatus = existingAudio.status;
+    if (status !== undefined) {
+      const statusStr = (status || '').toString().toUpperCase();
+      normalizedStatus = statusStr === 'DRAFT' || statusStr === 'PUBLISHED'
+        ? statusStr
+        : (status === 'draft' ? 'DRAFT' : status === 'published' ? 'PUBLISHED' : existingAudio.status);
+    }
+
+    // Build update data object
+    const updateData = {};
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (category !== undefined) updateData.category = category;
+    updateData.tags = parsedTags;
+    updateData.subCategories = parsedSubCategories;
+    updateData.status = normalizedStatus;
+
+    const updatedAudio = await prisma.audio.update({
+      where: { id },
+      data: updateData,
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true
+          }
+        }
+      }
+    });
+
+    console.log('✅ Audio updated successfully:', updatedAudio.id);
+    res.status(200).json({ 
+      message: "Audio updated successfully", 
+      audio: updatedAudio 
+    });
+  } catch (error) {
+    console.error("🔥 updateAudio error:", error);
+    res.status(500).json({ error: "Failed to update audio." });
   }
 };
 
