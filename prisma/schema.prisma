@@ -211,6 +211,9 @@ model Audio {
   fileName    String
   publicId  String?
   fileUrl   String
+  segmentUrls      String[] @default([])
+  segmentPublicIds String[] @default([])
+  totalDuration    Int?
   category  String?   @db.VarChar(100)
   user      User?@relation(fields: [userId], references: [id],onDelete:Cascade)
   userId    String?

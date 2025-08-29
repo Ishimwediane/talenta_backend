@@ -11,6 +11,10 @@ import {
  updateAudioStatus, // kept for backward compatibility
   getUserDrafts, 
   deleteAudio,
+  appendAudioSegments,
+  updateAudioSegmentsOrder,
+  removeAudioSegment,
+  mergeAudioSegments,
   getUserAllAudios, // Added for backward compatibility
   updateAudio // Added for backward compatibility
 } from "../controllers/audio.controller.js";
@@ -109,6 +113,10 @@ const handleMulterError = (error, req, res, next) => {
 router.get("/user/all", authenticateToken, getUserAllAudios);     // Get user's all audios (published + drafts)
 router.get("/user/drafts", authenticateToken, getUserDrafts);     // Get user's drafts only
 router.post("/upload", authenticateToken, audioUpload.single('audio'), handleMulterError, uploadAudio);
+router.post("/:id/segments", authenticateToken, audioUpload.array('segments', 5), handleMulterError, appendAudioSegments);
+router.patch("/:id/segments/order", authenticateToken, updateAudioSegmentsOrder);
+router.delete("/:id/segments", authenticateToken, removeAudioSegment);
+router.post("/:id/segments/merge", authenticateToken, mergeAudioSegments);
 // router.patch("/:id", authenticateToken, updateAudio);            // Update audio (title, description, tags, status)
 router.patch("/:id", authenticateToken, updateAudio);             // Update audio (title, description, tags, status)
 router.patch("/:id/publish", authenticateToken, updateAudioStatus); // Backward compatibility - publish draft

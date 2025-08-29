@@ -182,7 +182,7 @@ export const updateAudioStatus = async (req, res) => {
       return res.status(403).json({ error: "You can only update your own audio." });
     }
 
-    const updatedAudio = await prisma.audio.update({
+    let updatedAudio = await prisma.audio.update({
       where: { id },
       data: { status: mappedStatus },
       include: {
@@ -197,9 +197,80 @@ export const updateAudioStatus = async (req, res) => {
     });
 
     console.log('✅ Audio status updated successfully:', updatedAudio.id);
-    res.status(200).json({ 
-      message: `Audio ${mappedStatus === 'PUBLISHED' ? 'PUBLISHED' : 'saved as draft'} successfully`, 
-      audio: updatedAudio 
+
+    // Auto-merge on publish if segments exist
+    if (mappedStatus === 'PUBLISHED') {
+      try {
+        const audio = await prisma.audio.findUnique({ where: { id } });
+        const sources = [audio.fileUrl, ...(audio.segmentUrls || [])].filter(Boolean);
+        if (sources.length >= 2) {
+          const [{ default: ffmpegPath }, { default: ffmpegLib }, axios, os] = await Promise.all([
+            import('ffmpeg-static'),
+            import('fluent-ffmpeg'),
+            import('axios'),
+            import('os')
+          ]);
+          const ffmpeg = ffmpegLib;
+          if (ffmpegPath) {
+            ffmpeg.setFfmpegPath(ffmpegPath);
+          }
+
+          const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'merge-'));
+          const localFiles = [];
+          for (let i = 0; i < sources.length; i++) {
+            const url = sources[i];
+            const ext = path.extname(new URL(url).pathname) || '.webm';
+            const out = path.join(tmpDir, `part_${i}${ext}`);
+            const writer = fs.createWriteStream(out);
+            const resp = await axios.default.get(url, { responseType: 'stream' });
+            await new Promise((resolve, reject) => {
+              resp.data.pipe(writer);
+              writer.on('finish', resolve);
+              writer.on('error', reject);
+            });
+            localFiles.push(out);
+          }
+
+          const listPath = path.join(tmpDir, 'list.txt');
+          fs.writeFileSync(listPath, localFiles.map(f => `file '${f.replace(/'/g, "'\\''")}'`).join('\n'));
+          const mergedPath = path.join(tmpDir, `merged_${Date.now()}.mp3`);
+
+          await new Promise((resolve, reject) => {
+            ffmpeg()
+              .input(listPath)
+              .inputOptions(['-f concat', '-safe 0'])
+              .audioCodec('libmp3lame')
+              .on('end', resolve)
+              .on('error', reject)
+              .save(mergedPath);
+          });
+
+          const uploadRes = await cloudinary.uploader.upload(mergedPath, {
+            resource_type: 'video',
+            folder: 'audio-files',
+            public_id: `merged_${id}_${Date.now()}`
+          });
+
+          updatedAudio = await prisma.audio.update({
+            where: { id },
+            data: { fileUrl: uploadRes.secure_url, publicId: uploadRes.public_id },
+            include: {
+              user: { select: { id: true, firstName: true, lastName: true } }
+            }
+          });
+
+          try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+          console.log('✅ Auto-merged on publish:', updatedAudio.id);
+        }
+      } catch (mergeErr) {
+        console.error('⚠️ Auto-merge on publish failed:', mergeErr);
+        // Proceed without failing the publish
+      }
+    }
+
+    res.status(200).json({
+      message: `Audio ${mappedStatus === 'PUBLISHED' ? 'PUBLISHED (merged if segments present)' : 'saved as draft'} successfully`,
+      audio: updatedAudio
     });
   } catch (error) {
     console.error("🔥 updateAudioStatus error:", error);
@@ -593,5 +664,204 @@ export const deleteAudio = async (req, res) => {
   } catch (error) {
     console.error("🔥 deleteAudio error:", error);
     res.status(500).json({ error: "Failed to delete audio." });
+  }
+};
+
+// @desc Append audio segments to an existing audio
+export const appendAudioSegments = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: "User not authenticated." });
+    }
+
+    const existingAudio = await prisma.audio.findUnique({ where: { id } });
+    if (!existingAudio) {
+      return res.status(404).json({ error: "Audio not found." });
+    }
+
+    if (existingAudio.userId !== req.user.id) {
+      return res.status(403).json({ error: "You can only modify your own audio." });
+    }
+
+    // Expecting Cloudinary via multer-storage-cloudinary: each file has path (url) and filename (public_id)
+    const files = Array.isArray(req.files) ? req.files : (req.file ? [req.file] : []);
+    if (!files.length) {
+      return res.status(400).json({ error: "No segment files uploaded." });
+    }
+
+    const newUrls = files.map(f => f.path).filter(Boolean);
+    const newPublicIds = files.map(f => f.filename).filter(Boolean);
+
+    const updated = await prisma.audio.update({
+      where: { id },
+      data: {
+        segmentUrls: { set: [ ...(existingAudio.segmentUrls || []), ...newUrls ] },
+        segmentPublicIds: { set: [ ...(existingAudio.segmentPublicIds || []), ...newPublicIds ] },
+      },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true } }
+      }
+    });
+
+    return res.status(200).json({ message: "Segments appended", audio: updated, appended: { urls: newUrls, publicIds: newPublicIds } });
+  } catch (error) {
+    console.error('🔥 appendAudioSegments error:', error);
+    return res.status(500).json({ error: "Failed to append audio segments." });
+  }
+};
+
+// @desc Update order of audio segments (owner only)
+export const updateAudioSegmentsOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { segmentPublicIds } = req.body; // full desired order
+    if (!Array.isArray(segmentPublicIds)) {
+      return res.status(400).json({ error: 'segmentPublicIds must be an array' });
+    }
+    if (!req.user?.id) return res.status(401).json({ error: 'User not authenticated.' });
+    const audio = await prisma.audio.findUnique({ where: { id } });
+    if (!audio) return res.status(404).json({ error: 'Audio not found.' });
+    if (audio.userId !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+
+    // Map publicIds to urls using current arrays
+    const map = new Map();
+    (audio.segmentPublicIds || []).forEach((pid, idx) => map.set(pid, (audio.segmentUrls || [])[idx]));
+    const newUrls = segmentPublicIds.map(pid => map.get(pid)).filter(Boolean);
+    if (newUrls.length !== segmentPublicIds.length) {
+      return res.status(400).json({ error: 'One or more publicIds are invalid' });
+    }
+
+    const updated = await prisma.audio.update({
+      where: { id },
+      data: {
+        segmentPublicIds: { set: segmentPublicIds },
+        segmentUrls: { set: newUrls }
+      },
+      include: { user: { select: { id: true, firstName: true, lastName: true } } }
+    });
+    return res.status(200).json({ message: 'Order updated', audio: updated });
+  } catch (error) {
+    console.error('🔥 updateAudioSegmentsOrder error:', error);
+    return res.status(500).json({ error: 'Failed to update order.' });
+  }
+};
+
+// @desc Remove a single segment (owner only)
+export const removeAudioSegment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { publicId } = req.body;
+    if (!publicId) return res.status(400).json({ error: 'publicId is required' });
+    if (!req.user?.id) return res.status(401).json({ error: 'User not authenticated.' });
+    const audio = await prisma.audio.findUnique({ where: { id } });
+    if (!audio) return res.status(404).json({ error: 'Audio not found.' });
+    if (audio.userId !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+
+    const idx = (audio.segmentPublicIds || []).indexOf(publicId);
+    if (idx === -1) return res.status(404).json({ error: 'Segment not found' });
+    const newPublicIds = [...(audio.segmentPublicIds || [])];
+    const newUrls = [...(audio.segmentUrls || [])];
+    const [removedPublicId] = newPublicIds.splice(idx, 1);
+    newUrls.splice(idx, 1);
+
+    // Try delete from Cloudinary but do not fail if it errors
+    if (removedPublicId) {
+      try { await cloudinary.uploader.destroy(removedPublicId, { resource_type: 'video' }); } catch {}
+    }
+
+    const updated = await prisma.audio.update({
+      where: { id },
+      data: { segmentPublicIds: { set: newPublicIds }, segmentUrls: { set: newUrls } },
+      include: { user: { select: { id: true, firstName: true, lastName: true } } }
+    });
+    return res.status(200).json({ message: 'Segment removed', audio: updated });
+  } catch (error) {
+    console.error('🔥 removeAudioSegment error:', error);
+    return res.status(500).json({ error: 'Failed to remove segment.' });
+  }
+};
+
+// @desc Merge base audio + segments into a single file
+export const mergeAudioSegments = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!req.user?.id) return res.status(401).json({ error: 'User not authenticated.' });
+    const audio = await prisma.audio.findUnique({ where: { id } });
+    if (!audio) return res.status(404).json({ error: 'Audio not found.' });
+    if (audio.userId !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+
+    const sources = [audio.fileUrl, ...(audio.segmentUrls || [])].filter(Boolean);
+    if (sources.length < 2) return res.status(400).json({ error: 'Need at least one segment to merge' });
+
+    // Lazy-load heavy deps
+    const [{ default: ffmpegPath }, { default: ffmpegLib }, axios, os] = await Promise.all([
+      import('ffmpeg-static'),
+      import('fluent-ffmpeg'),
+      import('axios'),
+      import('os')
+    ]);
+    const ffmpeg = ffmpegLib;
+    if (ffmpegPath) {
+      ffmpeg.setFfmpegPath(ffmpegPath);
+    }
+
+    // Prepare temp files
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'merge-'));
+    const localFiles = [];
+    for (let i = 0; i < sources.length; i++) {
+      const url = sources[i];
+      const ext = path.extname(new URL(url).pathname) || '.webm';
+      const out = path.join(tmpDir, `part_${i}${ext}`);
+      const writer = fs.createWriteStream(out);
+      const resp = await axios.default.get(url, { responseType: 'stream' });
+      await new Promise((resolve, reject) => {
+        resp.data.pipe(writer);
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+      });
+      localFiles.push(out);
+    }
+
+    // Build concat list file
+    const listPath = path.join(tmpDir, 'list.txt');
+    fs.writeFileSync(listPath, localFiles.map(f => `file '${f.replace(/'/g, "'\\''")}'`).join('\n'));
+
+    // Output file
+    const mergedPath = path.join(tmpDir, `merged_${Date.now()}.mp3`);
+
+    // Run ffmpeg (re-encode for compatibility)
+    await new Promise((resolve, reject) => {
+      ffmpeg()
+        .input(listPath)
+        .inputOptions(['-f concat', '-safe 0'])
+        .audioCodec('libmp3lame')
+        .on('end', resolve)
+        .on('error', reject)
+        .save(mergedPath);
+    });
+
+    // Upload merged to Cloudinary
+    const uploadRes = await cloudinary.uploader.upload(mergedPath, {
+      resource_type: 'video',
+      folder: 'audio-files',
+      public_id: `merged_${id}_${Date.now()}`
+    });
+
+    // Update audio master to merged but keep segments
+    const updated = await prisma.audio.update({
+      where: { id },
+      data: { fileUrl: uploadRes.secure_url, publicId: uploadRes.public_id },
+      include: { user: { select: { id: true, firstName: true, lastName: true } } }
+    });
+
+    // Cleanup temp dir best-effort
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+
+    return res.status(200).json({ message: 'Merged successfully', audio: updated });
+  } catch (error) {
+    console.error('🔥 mergeAudioSegments error:', error);
+    return res.status(500).json({ error: 'Failed to merge audio segments.' });
   }
 };
