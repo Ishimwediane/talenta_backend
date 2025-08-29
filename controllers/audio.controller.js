@@ -198,12 +198,19 @@ export const updateAudioStatus = async (req, res) => {
 
     console.log('✅ Audio status updated successfully:', updatedAudio.id);
 
-    // Auto-merge on publish if segments exist
+    res.status(200).json({
+      message: `Audio ${mappedStatus === 'PUBLISHED' ? 'PUBLISHED (merged if segments present)' : 'saved as draft'} successfully`,
+      audio: updatedAudio
+    });
+
+    // Kick off background merge after responding
     if (mappedStatus === 'PUBLISHED') {
-      try {
-        const audio = await prisma.audio.findUnique({ where: { id } });
-        const sources = [audio.fileUrl, ...(audio.segmentUrls || [])].filter(Boolean);
-        if (sources.length >= 2) {
+      (async () => {
+        try {
+          const audio = await prisma.audio.findUnique({ where: { id } });
+          const sources = [audio.fileUrl, ...(audio.segmentUrls || [])].filter(Boolean);
+          if (sources.length < 2) return;
+
           const [{ default: ffmpegPath }, { default: ffmpegLib }, axios, os] = await Promise.all([
             import('ffmpeg-static'),
             import('fluent-ffmpeg'),
@@ -251,27 +258,18 @@ export const updateAudioStatus = async (req, res) => {
             public_id: `merged_${id}_${Date.now()}`
           });
 
-          updatedAudio = await prisma.audio.update({
+          await prisma.audio.update({
             where: { id },
-            data: { fileUrl: uploadRes.secure_url, publicId: uploadRes.public_id },
-            include: {
-              user: { select: { id: true, firstName: true, lastName: true } }
-            }
+            data: { fileUrl: uploadRes.secure_url, publicId: uploadRes.public_id }
           });
 
           try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-          console.log('✅ Auto-merged on publish:', updatedAudio.id);
+          console.log('✅ Auto-merged on publish (background):', id);
+        } catch (mergeErr) {
+          console.error('⚠️ Auto-merge on publish failed (background):', mergeErr);
         }
-      } catch (mergeErr) {
-        console.error('⚠️ Auto-merge on publish failed:', mergeErr);
-        // Proceed without failing the publish
-      }
+      })();
     }
-
-    res.status(200).json({
-      message: `Audio ${mappedStatus === 'PUBLISHED' ? 'PUBLISHED (merged if segments present)' : 'saved as draft'} successfully`,
-      audio: updatedAudio
-    });
   } catch (error) {
     console.error("🔥 updateAudioStatus error:", error);
     res.status(500).json({ error: "Failed to update audio status." });
