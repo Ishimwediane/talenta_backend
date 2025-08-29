@@ -117,6 +117,7 @@ router.post("/:id/segments", authenticateToken, audioUpload.array('segments', 5)
 router.patch("/:id/segments/order", authenticateToken, updateAudioSegmentsOrder);
 router.delete("/:id/segments", authenticateToken, removeAudioSegment);
 router.post("/:id/segments/merge", authenticateToken, mergeAudioSegments);
+router.post("/:id/publish-merge", authenticateToken, mergeAudioSegments); // Alias for publish-merge
 // router.patch("/:id", authenticateToken, updateAudio);            // Update audio (title, description, tags, status)
 router.patch("/:id", authenticateToken, updateAudio);             // Update audio (title, description, tags, status)
 router.patch("/:id/publish", authenticateToken, updateAudioStatus); // Backward compatibility - publish draft

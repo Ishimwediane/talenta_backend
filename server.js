@@ -21,7 +21,17 @@ const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Add timeout configurations
 app.use(express.urlencoded({ extended: true }));
+
+// Set server timeout for long-running requests (like audio uploads)
+app.use((req, res, next) => {
+  // Set timeout for all requests to 5 minutes
+  req.setTimeout(300000); // 5 minutes
+  res.setTimeout(300000); // 5 minutes
+  next();
+});
 
 // Enhanced CORS configuration
 const corsOptions = {

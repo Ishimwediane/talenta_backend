@@ -785,81 +785,219 @@ export const removeAudioSegment = async (req, res) => {
 export const mergeAudioSegments = async (req, res) => {
   try {
     const { id } = req.params;
+    const { publish = false } = req.body; // Check if this is a publish request
+    
+    console.log(`🔄 Starting merge for audio ${id}, publish: ${publish}`);
+    
     if (!req.user?.id) return res.status(401).json({ error: 'User not authenticated.' });
+    
     const audio = await prisma.audio.findUnique({ where: { id } });
     if (!audio) return res.status(404).json({ error: 'Audio not found.' });
     if (audio.userId !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
 
-    const sources = [audio.fileUrl, ...(audio.segmentUrls || [])].filter(Boolean);
-    if (sources.length < 2) return res.status(400).json({ error: 'Need at least one segment to merge' });
+    console.log(`📊 Audio found: ${audio.title}, segments: ${audio.segmentUrls?.length || 0}`);
 
-    // Lazy-load heavy deps
-    const [{ default: ffmpegPath }, { default: ffmpegLib }, axios, os] = await Promise.all([
-      import('ffmpeg-static'),
-      import('fluent-ffmpeg'),
-      import('axios'),
-      import('os')
-    ]);
-    const ffmpeg = ffmpegLib;
-    if (ffmpegPath) {
-      ffmpeg.setFfmpegPath(ffmpegPath);
+    // Check if we have segments to merge
+    if (!audio.segmentUrls || audio.segmentUrls.length === 0) {
+      console.log('⚠️ No segments to merge, just updating status if publishing');
+      
+      if (publish) {
+        // Just publish without merging
+        const updated = await prisma.audio.update({
+          where: { id },
+          data: { status: 'PUBLISHED' },
+          include: { user: { select: { id: true, firstName: true, lastName: true } } }
+        });
+        
+        return res.status(200).json({ 
+          message: 'Audio published successfully!', 
+          audio: updated 
+        });
+      } else {
+        return res.status(400).json({ error: 'No segments to merge. Add some segments first.' });
+      }
     }
 
-    // Prepare temp files
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'merge-'));
-    const localFiles = [];
-    for (let i = 0; i < sources.length; i++) {
-      const url = sources[i];
-      const ext = path.extname(new URL(url).pathname) || '.webm';
-      const out = path.join(tmpDir, `part_${i}${ext}`);
-      const writer = fs.createWriteStream(out);
-      const resp = await axios.default.get(url, { responseType: 'stream' });
+    const sources = [audio.fileUrl, ...audio.segmentUrls].filter(Boolean);
+    console.log(`🎵 Sources to merge: ${sources.length} (main + ${audio.segmentUrls.length} segments)`);
+
+    if (sources.length < 2) {
+      return res.status(400).json({ error: 'Need at least one segment to merge' });
+    }
+
+    console.log('🎬 Starting full audio merge with FFmpeg...');
+
+    try {
+      // Lazy-load heavy deps
+      const [{ default: ffmpegPath }, { default: ffmpegLib }, axios, os] = await Promise.all([
+        import('ffmpeg-static'),
+        import('fluent-ffmpeg'),
+        import('axios'),
+        import('os')
+      ]);
+      
+      const ffmpeg = ffmpegLib;
+      if (ffmpegPath) {
+        ffmpeg.setFfmpegPath(ffmpegPath);
+        console.log('✅ FFmpeg path set:', ffmpegPath);
+      } else {
+        console.log('⚠️ FFmpeg path not found, using system FFmpeg');
+      }
+
+      // Prepare temp files
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'merge-'));
+      console.log('📁 Temp directory created:', tmpDir);
+      
+      const localFiles = [];
+      
+      // Download all audio files
+      console.log('📥 Downloading audio files for merge...');
+      for (let i = 0; i < sources.length; i++) {
+        const url = sources[i];
+        const ext = path.extname(new URL(url).pathname) || '.webm';
+        const out = path.join(tmpDir, `part_${i}${ext}`);
+        
+        console.log(`📥 Downloading part ${i + 1}/${sources.length}: ${url}`);
+        
+        const writer = fs.createWriteStream(out);
+        const resp = await axios.default.get(url, { 
+          responseType: 'stream',
+          timeout: 30000 // 30 second timeout
+        });
+        
+        await new Promise((resolve, reject) => {
+          resp.data.pipe(writer);
+          writer.on('finish', () => {
+            console.log(`✅ Downloaded part ${i + 1}: ${out}`);
+            resolve(true);
+          });
+          writer.on('error', reject);
+        });
+        
+        localFiles.push(out);
+      }
+
+      // Build concat list file
+      const listPath = path.join(tmpDir, 'list.txt');
+      const listContent = localFiles.map(f => `file '${f.replace(/'/g, "'\\''")}'`).join('\n');
+      fs.writeFileSync(listPath, listContent);
+      console.log('📝 Concat list created:', listContent);
+
+      // Output file
+      const mergedPath = path.join(tmpDir, `merged_${Date.now()}.mp3`);
+      console.log('🎯 Output file:', mergedPath);
+
+      // Run ffmpeg to merge audio files
+      console.log('🎵 Running FFmpeg merge...');
       await new Promise((resolve, reject) => {
-        resp.data.pipe(writer);
-        writer.on('finish', resolve);
-        writer.on('error', reject);
+        ffmpeg()
+          .input(listPath)
+          .inputOptions(['-f', 'concat', '-safe', '0'])
+          .audioCodec('libmp3lame')
+          .audioBitrate('192k')
+          .on('start', (commandLine) => {
+            console.log('🚀 FFmpeg command:', commandLine);
+          })
+          .on('progress', (progress) => {
+            if (progress.percent) {
+              console.log(`🔄 Merge progress: ${Math.round(progress.percent)}%`);
+            }
+          })
+          .on('end', () => {
+            console.log('✅ FFmpeg merge completed successfully');
+            resolve(true);
+          })
+          .on('error', (err) => {
+            console.error('❌ FFmpeg error:', err);
+            reject(err);
+          })
+          .save(mergedPath);
       });
-      localFiles.push(out);
+
+      // Check if merged file exists and has content
+      if (!fs.existsSync(mergedPath) || fs.statSync(mergedPath).size === 0) {
+        throw new Error('Merged file was not created or is empty');
+      }
+
+      console.log('☁️ Uploading merged audio to Cloudinary...');
+      
+      // Upload merged to Cloudinary
+      const uploadRes = await cloudinary.uploader.upload(mergedPath, {
+        resource_type: 'video',
+        folder: 'audio-files',
+        public_id: `merged_${id}_${Date.now()}`,
+        audio_codec: 'mp3',
+        bit_rate: '192k'
+      });
+
+      console.log('✅ Cloudinary upload successful:', uploadRes.public_id);
+
+      // Update audio with merged file and publish status
+      const updateData = {
+        fileUrl: uploadRes.secure_url,
+        publicId: uploadRes.public_id,
+        status: publish ? 'PUBLISHED' : 'DRAFT'
+      };
+
+      console.log('💾 Updating database with merged audio...');
+      const updated = await prisma.audio.update({
+        where: { id },
+        data: updateData,
+        include: { user: { select: { id: true, firstName: true, lastName: true } } }
+      });
+
+      // Cleanup temp dir
+      try { 
+        fs.rmSync(tmpDir, { recursive: true, force: true }); 
+        console.log('🧹 Temporary files cleaned up');
+      } catch (e) {
+        console.log('⚠️ Cleanup failed (non-critical):', e.message);
+      }
+
+      const message = publish 
+        ? 'Audio published and all segments merged successfully into one file!' 
+        : 'Audio segments merged successfully!';
+      
+      console.log(`🎉 ${message}`);
+
+      return res.status(200).json({ 
+        message, 
+        audio: updated,
+        mergedFile: {
+          url: uploadRes.secure_url,
+          publicId: uploadRes.public_id,
+          size: fs.statSync(mergedPath).size
+        }
+      });
+
+    } catch (mergeError) {
+      console.error('🔥 Audio merge failed:', mergeError);
+      
+      // If merge fails, still allow publishing without merging
+      if (publish) {
+        console.log('🔄 Fallback: Publishing without merge');
+        const updated = await prisma.audio.update({
+          where: { id },
+          data: { status: 'PUBLISHED' },
+          include: { user: { select: { id: true, firstName: true, lastName: true } } }
+        });
+        
+        return res.status(200).json({ 
+          message: 'Audio published successfully! (Merge failed, segments preserved)',
+          audio: updated,
+          warning: 'Audio merging failed but audio was published. Segments are preserved for manual processing.'
+        });
+      } else {
+        throw mergeError;
+      }
     }
 
-    // Build concat list file
-    const listPath = path.join(tmpDir, 'list.txt');
-    fs.writeFileSync(listPath, localFiles.map(f => `file '${f.replace(/'/g, "'\\''")}'`).join('\n'));
-
-    // Output file
-    const mergedPath = path.join(tmpDir, `merged_${Date.now()}.mp3`);
-
-    // Run ffmpeg (re-encode for compatibility)
-    await new Promise((resolve, reject) => {
-      ffmpeg()
-        .input(listPath)
-        .inputOptions(['-f concat', '-safe 0'])
-        .audioCodec('libmp3lame')
-        .on('end', resolve)
-        .on('error', reject)
-        .save(mergedPath);
-    });
-
-    // Upload merged to Cloudinary
-    const uploadRes = await cloudinary.uploader.upload(mergedPath, {
-      resource_type: 'video',
-      folder: 'audio-files',
-      public_id: `merged_${id}_${Date.now()}`
-    });
-
-    // Update audio master to merged but keep segments
-    const updated = await prisma.audio.update({
-      where: { id },
-      data: { fileUrl: uploadRes.secure_url, publicId: uploadRes.public_id },
-      include: { user: { select: { id: true, firstName: true, lastName: true } } }
-    });
-
-    // Cleanup temp dir best-effort
-    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-
-    return res.status(200).json({ message: 'Merged successfully', audio: updated });
   } catch (error) {
     console.error('🔥 mergeAudioSegments error:', error);
-    return res.status(500).json({ error: 'Failed to merge audio segments.' });
+    console.error('Error stack:', error.stack);
+    return res.status(500).json({ 
+      error: 'Failed to process audio. Please try again.',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
