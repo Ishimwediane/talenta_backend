@@ -24,3 +24,4 @@ router.delete('/users/:id', requireAdmin, deleteUser);
 router.get('/users/:id/content', requireAdmin, getUserContent);
 
 export default router;
+

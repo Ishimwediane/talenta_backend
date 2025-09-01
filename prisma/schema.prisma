@@ -47,6 +47,8 @@ model User {
   contents             Content[]
   books Book[]
   audio Audio[]
+  chapters Chapter[]
+  bookContributions BookContributor[]
 
 
   @@map("users")
@@ -176,24 +178,93 @@ model Book {
   description String?
   publishedAt DateTime?
 
-
   coverImage  String?  
   coverImagePublicId String?
   bookFile    String?
   bookFilePublicId   String?  
-readUrl           String?   // for reading inline
+  readUrl           String?   // for reading inline
   downloadUrl       String?   // for downloading
-
 
   content     String?   @db.Text   // To store the rich text (HTML) from the editor
   status      BookStatus @default(DRAFT) // Default new books to DRAFT
   category    String?   @db.VarChar(100)
   
+  // Collaborative features
+  isCollaborative Boolean @default(false) // Allow multiple authors to contribute
+  allowChapterContributions Boolean @default(false) // Allow users to add chapters
+  
   userId      String? 
   user        User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // Relations
+  chapters    Chapter[]
+  contributors BookContributor[]
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model Chapter {
+  id          String   @id @default(cuid())
+  title       String
+  content     String?  @db.Text // Rich text content
+  order       Int      // Chapter order in the book
+  status      ChapterStatus @default(DRAFT)
+  isPublished Boolean  @default(false)
+  
+  // Chapter metadata
+  wordCount   Int?     // Optional word count
+  readingTime Int?     // Estimated reading time in minutes
+  
+  // Relations
+  bookId      String
+  book        Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([bookId, order]) // Ensure unique chapter order per book
+  @@map("chapters")
+}
+
+model BookContributor {
+  id        String   @id @default(cuid())
+  bookId    String
+  userId    String
+  role      ContributorRole @default(COLLABORATOR)
+  status    ContributorStatus @default(PENDING) // PENDING, APPROVED, REJECTED
+  invitedAt DateTime @default(now())
+  respondedAt DateTime?
+  
+  // Relations
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([bookId, userId]) // One contribution per user per book
+  @@map("book_contributors")
+}
+
+enum ChapterStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ContributorRole {
+  COAUTHOR     // Can edit book details and all chapters
+  COLLABORATOR // Can add/edit their own chapters
+  REVIEWER     // Can review and suggest changes
+}
+
+enum ContributorStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum AudioStatus {

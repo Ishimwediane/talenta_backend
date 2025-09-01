@@ -406,6 +406,8 @@ export const getUserContent = async (req, res) => {
     const { id } = req.params;
     const { type = 'all' } = req.query;
 
+    console.log('🔍 getUserContent called with:', { id, type });
+
     // Check if user exists
     const user = await prisma.user.findUnique({
       where: { id },
@@ -418,6 +420,8 @@ export const getUserContent = async (req, res) => {
         message: 'User not found'
       });
     }
+
+    console.log('👤 User found:', user);
 
     const contentData = {};
 
@@ -442,6 +446,7 @@ export const getUserContent = async (req, res) => {
 
     // Get audio
     if (type === 'all' || type === 'audio') {
+      console.log('🎵 Fetching audio for user:', id);
       contentData.audio = await prisma.audio.findMany({
         where: { userId: id },
         select: {
@@ -457,6 +462,7 @@ export const getUserContent = async (req, res) => {
         },
         orderBy: { createdAt: 'desc' }
       });
+      console.log('🎵 Audio found:', contentData.audio.length, 'files');
     }
 
     // Get other content
@@ -483,6 +489,13 @@ export const getUserContent = async (req, res) => {
       });
     }
 
+    console.log('📤 Sending response:', { 
+      user: user.id, 
+      books: contentData.books?.length || 0, 
+      audio: contentData.audio?.length || 0, 
+      contents: contentData.contents?.length || 0 
+    });
+
     res.json({
       success: true,
       data: {
@@ -503,3 +516,4 @@ export const getUserContent = async (req, res) => {
     });
   }
 };
+
