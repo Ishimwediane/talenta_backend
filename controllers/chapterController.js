@@ -113,6 +113,12 @@ export const getChapter = async (req, res) => {
  */
 export const createChapter = async (req, res) => {
   try {
+    console.log('🔍 createChapter called with:', { 
+      bookId: req.params.bookId, 
+      body: req.body, 
+      userId: req.user?.id 
+    });
+    
     const { bookId } = req.params;
     const { title, content, order } = req.body;
     const userId = req.user.id;
@@ -122,7 +128,10 @@ export const createChapter = async (req, res) => {
       where: { id: bookId }
     });
 
+    console.log('📖 Book found:', book);
+
     if (!book) {
+      console.log('❌ Book not found');
       return res.status(404).json({
         success: false,
         message: 'Book not found'
@@ -131,6 +140,7 @@ export const createChapter = async (req, res) => {
 
     // Check permissions - only book owner can add chapters
     if (book.userId !== userId) {
+      console.log('❌ Permission denied - user is not book owner');
       return res.status(403).json({
         success: false,
         message: 'You can only add chapters to your own books'
@@ -168,6 +178,16 @@ export const createChapter = async (req, res) => {
     const wordCount = content ? content.replace(/<[^>]*>/g, '').split(/\s+/).length : 0;
     const readingTime = Math.ceil(wordCount / 200); // Assuming 200 words per minute
 
+    console.log('📝 Creating chapter with data:', {
+      title,
+      content: content ? `${content.substring(0, 100)}...` : 'No content',
+      order: chapterOrder,
+      bookId,
+      authorId: userId,
+      wordCount,
+      readingTime
+    });
+
     const chapter = await prisma.chapter.create({
       data: {
         title,
@@ -190,13 +210,15 @@ export const createChapter = async (req, res) => {
       }
     });
 
+    console.log('✅ Chapter created successfully:', chapter);
+
     res.status(201).json({
       success: true,
       message: 'Chapter created successfully',
       data: chapter
     });
   } catch (error) {
-    console.error('Error creating chapter:', error);
+    console.error('❌ Error creating chapter:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to create chapter',

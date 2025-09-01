@@ -23,3 +23,4 @@ router.delete('/chapters/:chapterId', deleteChapter);
 router.put('/books/:bookId/chapters/reorder', reorderChapters);
 
 export default router;
+

@@ -45,11 +45,29 @@ export const getMyBooks = async (req, res) => {
 export const getBookById = async (req, res) => {
   try {
     const query = { id: req.params.id };
-    if (req.user) {
-      query.userId = req.user.id;
-    }
+    
+    // For now, let's not filter by userId to allow public access
+    // We'll handle permissions in the frontend
+    console.log('🔍 getBookById query:', query);
 
-    const book = await prisma.book.findFirst({ where: query });
+    const book = await prisma.book.findFirst({ 
+      where: query,
+      include: {
+        chapters: {
+          orderBy: {
+            order: 'asc'
+          }
+        }
+      }
+    });
+    
+    console.log('📚 Book found with chapters:', book ? {
+      id: book.id,
+      title: book.title,
+      chaptersCount: book.chapters ? book.chapters.length : 0,
+      chapters: book.chapters
+    } : 'No book found');
+    
     if (!book) {
       return res
         .status(404)
