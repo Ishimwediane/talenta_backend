@@ -48,7 +48,6 @@ model User {
   books Book[]
   audio Audio[]
   chapters Chapter[]
-  bookContributions BookContributor[]
 
 
   @@map("users")
@@ -189,16 +188,11 @@ model Book {
   status      BookStatus @default(DRAFT) // Default new books to DRAFT
   category    String?   @db.VarChar(100)
   
-  // Collaborative features
-  isCollaborative Boolean @default(false) // Allow multiple authors to contribute
-  allowChapterContributions Boolean @default(false) // Allow users to add chapters
-  
   userId      String? 
   user        User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Relations
   chapters    Chapter[]
-  contributors BookContributor[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -229,42 +223,10 @@ model Chapter {
   @@map("chapters")
 }
 
-model BookContributor {
-  id        String   @id @default(cuid())
-  bookId    String
-  userId    String
-  role      ContributorRole @default(COLLABORATOR)
-  status    ContributorStatus @default(PENDING) // PENDING, APPROVED, REJECTED
-  invitedAt DateTime @default(now())
-  respondedAt DateTime?
-  
-  // Relations
-  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  @@unique([bookId, userId]) // One contribution per user per book
-  @@map("book_contributors")
-}
-
 enum ChapterStatus {
   DRAFT
   PUBLISHED
   ARCHIVED
-}
-
-enum ContributorRole {
-  COAUTHOR     // Can edit book details and all chapters
-  COLLABORATOR // Can add/edit their own chapters
-  REVIEWER     // Can review and suggest changes
-}
-
-enum ContributorStatus {
-  PENDING
-  APPROVED
-  REJECTED
 }
 
 enum AudioStatus {

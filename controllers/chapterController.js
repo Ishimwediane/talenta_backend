@@ -11,7 +11,7 @@ export const getBookChapters = async (req, res) => {
     // Check if book exists
     const book = await prisma.book.findUnique({
       where: { id: bookId },
-      select: { id: true, title: true, isCollaborative: true, allowChapterContributions: true }
+      select: { id: true, title: true, author: true }
     });
 
     if (!book) {
@@ -73,8 +73,7 @@ export const getChapter = async (req, res) => {
           select: {
             id: true,
             title: true,
-            isCollaborative: true,
-            allowChapterContributions: true
+            author: true
           }
         },
         author: {
@@ -118,17 +117,9 @@ export const createChapter = async (req, res) => {
     const { title, content, order } = req.body;
     const userId = req.user.id;
 
-    // Check if book exists and user has permission
+    // Check if book exists and user is the owner
     const book = await prisma.book.findUnique({
-      where: { id: bookId },
-      include: {
-        contributors: {
-          where: {
-            userId: userId,
-            status: 'APPROVED'
-          }
-        }
-      }
+      where: { id: bookId }
     });
 
     if (!book) {
@@ -138,15 +129,11 @@ export const createChapter = async (req, res) => {
       });
     }
 
-    // Check permissions
-    const isBookOwner = book.userId === userId;
-    const isApprovedContributor = book.contributors.length > 0;
-    const canContribute = book.allowChapterContributions && (isBookOwner || isApprovedContributor);
-
-    if (!canContribute) {
+    // Check permissions - only book owner can add chapters
+    if (book.userId !== userId) {
       return res.status(403).json({
         success: false,
-        message: 'You do not have permission to add chapters to this book'
+        message: 'You can only add chapters to your own books'
       });
     }
 
@@ -231,16 +218,7 @@ export const updateChapter = async (req, res) => {
     const existingChapter = await prisma.chapter.findUnique({
       where: { id: chapterId },
       include: {
-        book: {
-          include: {
-            contributors: {
-              where: {
-                userId: userId,
-                status: 'APPROVED'
-              }
-            }
-          }
-        }
+        book: true
       }
     });
 
@@ -251,16 +229,11 @@ export const updateChapter = async (req, res) => {
       });
     }
 
-    // Check permissions
-    const isBookOwner = existingChapter.book.userId === userId;
-    const isChapterAuthor = existingChapter.authorId === userId;
-    const isApprovedContributor = existingChapter.book.contributors.length > 0;
-    const canEdit = isBookOwner || isChapterAuthor || isApprovedContributor;
-
-    if (!canEdit) {
+    // Check permissions - only book owner can edit chapters
+    if (existingChapter.book.userId !== userId) {
       return res.status(403).json({
         success: false,
-        message: 'You do not have permission to edit this chapter'
+        message: 'You can only edit chapters in your own books'
       });
     }
 
@@ -334,16 +307,7 @@ export const deleteChapter = async (req, res) => {
     const existingChapter = await prisma.chapter.findUnique({
       where: { id: chapterId },
       include: {
-        book: {
-          include: {
-            contributors: {
-              where: {
-                userId: userId,
-                status: 'APPROVED'
-              }
-            }
-          }
-        }
+        book: true
       }
     });
 
@@ -354,15 +318,11 @@ export const deleteChapter = async (req, res) => {
       });
     }
 
-    // Check permissions
-    const isBookOwner = existingChapter.book.userId === userId;
-    const isChapterAuthor = existingChapter.authorId === userId;
-    const canDelete = isBookOwner || isChapterAuthor;
-
-    if (!canDelete) {
+    // Check permissions - only book owner can delete chapters
+    if (existingChapter.book.userId !== userId) {
       return res.status(403).json({
         success: false,
-        message: 'You do not have permission to delete this chapter'
+        message: 'You can only delete chapters from your own books'
       });
     }
 
@@ -395,15 +355,7 @@ export const reorderChapters = async (req, res) => {
 
     // Check if book exists and user has permission
     const book = await prisma.book.findUnique({
-      where: { id: bookId },
-      include: {
-        contributors: {
-          where: {
-            userId: userId,
-            status: 'APPROVED'
-          }
-        }
-      }
+      where: { id: bookId }
     });
 
     if (!book) {
@@ -413,15 +365,11 @@ export const reorderChapters = async (req, res) => {
       });
     }
 
-    // Check permissions
-    const isBookOwner = book.userId === userId;
-    const isApprovedContributor = book.contributors.length > 0;
-    const canReorder = isBookOwner || isApprovedContributor;
-
-    if (!canReorder) {
+    // Check permissions - only book owner can reorder chapters
+    if (book.userId !== userId) {
       return res.status(403).json({
         success: false,
-        message: 'You do not have permission to reorder chapters'
+        message: 'You can only reorder chapters in your own books'
       });
     }
 
