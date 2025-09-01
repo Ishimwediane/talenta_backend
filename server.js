@@ -13,6 +13,7 @@ import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
 import contentRoutes from './routes/content.routes.js';
 import audioRoutes from './routes/audioRoutes.js';
+import adminRoutes from './routes/admin.routes.js';
 
 dotenv.config();
 
@@ -115,6 +116,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/books', bookRoutes);
 app.use('/api/audio', audioRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
