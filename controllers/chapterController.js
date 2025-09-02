@@ -147,14 +147,32 @@ export const createChapter = async (req, res) => {
       });
     }
 
-    // Get the next chapter order if not provided
-    let chapterOrder = order;
-    if (!chapterOrder) {
-      const lastChapter = await prisma.chapter.findFirst({
-        where: { bookId },
-        orderBy: { order: 'desc' }
+    // Enforce strictly sequential chapter order without gaps
+    // Compute the first missing order (smallest positive integer not used)
+    const existingOrdersRows = await prisma.chapter.findMany({
+      where: { bookId },
+      select: { order: true },
+      orderBy: { order: 'asc' }
+    });
+
+    const existingOrders = existingOrdersRows.map(r => r.order);
+    let expectedOrder = 1;
+    for (let i = 1; i <= (existingOrders[existingOrders.length - 1] || 0) + 1; i++) {
+      if (!existingOrders.includes(i)) {
+        expectedOrder = i;
+        break;
+      }
+    }
+
+    // If client didn't provide order, assign the next expected order
+    let chapterOrder = order ?? expectedOrder;
+
+    // If client provided an order that skips the expected order, reject
+    if (order && order !== expectedOrder) {
+      return res.status(400).json({
+        success: false,
+        message: `Next chapter must be order ${expectedOrder}. You cannot skip chapter numbers.`
       });
-      chapterOrder = lastChapter ? lastChapter.order + 1 : 1;
     }
 
     // Check if order already exists
@@ -259,8 +277,29 @@ export const updateChapter = async (req, res) => {
       });
     }
 
-    // If changing order, check for conflicts
+    // If changing order, enforce sequential ordering and check for conflicts
     if (order && order !== existingChapter.order) {
+      const rows = await prisma.chapter.findMany({
+        where: { bookId: existingChapter.bookId },
+        select: { order: true },
+        orderBy: { order: 'asc' }
+      });
+      const orders = rows.map(r => r.order).filter(o => o !== existingChapter.order);
+      let expectedOrder = 1;
+      for (let i = 1; i <= (orders[orders.length - 1] || 0) + 1; i++) {
+        if (!orders.includes(i)) {
+          expectedOrder = i;
+          break;
+        }
+      }
+
+      if (order !== expectedOrder) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid order. The next available order is ${expectedOrder}.`
+        });
+      }
+
       const conflictingChapter = await prisma.chapter.findUnique({
         where: {
           bookId_order: {
