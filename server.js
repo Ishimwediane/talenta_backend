@@ -15,6 +15,8 @@ import contentRoutes from './routes/content.routes.js';
 import audioRoutes from './routes/audioRoutes.js';
 import adminRoutes from './routes/admin.routes.js';
 import chapterRoutes from './routes/chapterRoutes.js';
+import audioChapterRoutes from './routes/audioChapterRoutes.js';
+import audioPartRoutes from './routes/audioPartRoutes.js';
 
 dotenv.config();
 
@@ -119,6 +121,8 @@ app.use('/api/books', bookRoutes);
 app.use('/api/audio', audioRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api', chapterRoutes);
+app.use('/api/audio', audioChapterRoutes);
+app.use('/api/audio', audioPartRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

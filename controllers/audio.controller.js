@@ -397,6 +397,32 @@ export const getAllAudios = async (req, res) => {
             firstName: true,
             lastName: true
           }
+        },
+        chapters: {
+          where: { status: 'PUBLISHED' },
+          orderBy: { order: 'asc' },
+          include: {
+            author: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true
+              }
+            },
+            parts: {
+              where: { status: 'PUBLISHED' },
+              orderBy: { order: 'asc' },
+              include: {
+                author: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            }
+          }
         }
       }
     });
@@ -422,6 +448,30 @@ export const getAudioById = async (req, res) => {
             id: true,
             firstName: true,
             lastName: true
+          }
+        },
+        chapters: {
+          orderBy: { order: 'asc' },
+          include: {
+            author: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true
+              }
+            },
+            parts: {
+              orderBy: { order: 'asc' },
+              include: {
+                author: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            }
           }
         }
       }

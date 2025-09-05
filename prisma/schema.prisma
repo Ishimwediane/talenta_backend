@@ -48,6 +48,8 @@ model User {
   books Book[]
   audio Audio[]
   chapters Chapter[]
+  audioChapters AudioChapter[]
+  audioParts AudioPart[]
 
 
   @@map("users")
@@ -250,7 +252,77 @@ model Audio {
   category  String?   @db.VarChar(100)
   user      User?@relation(fields: [userId], references: [id],onDelete:Cascade)
   userId    String?
+  
+  // Relations
+  chapters  AudioChapter[]
+  
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AudioChapter {
+  id          String   @id @default(cuid())
+  title       String
+  description String?  @db.Text
+  order       Int      // Chapter order in the audio book
+  status      AudioChapterStatus @default(DRAFT)
+  isPublished Boolean  @default(false)
+  
+  // Chapter metadata
+  duration   Int?     // Duration in seconds
+  wordCount  Int?     // Optional word count for transcript
+  
+  // Relations
+  audioId    String
+  audio      Audio    @relation(fields: [audioId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parts      AudioPart[]
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  @@unique([audioId, order]) // Ensure unique chapter order per audio book
+  @@map("audio_chapters")
+}
+
+model AudioPart {
+  id          String   @id @default(cuid())
+  title       String?
+  description String?  @db.Text
+  order       Int      // Part order within the chapter
+  status      AudioPartStatus @default(DRAFT)
+  isPublished Boolean  @default(false)
+  
+  // Audio file details
+  fileName    String
+  publicId    String?
+  fileUrl     String
+  duration    Int?     // Duration in seconds
+  
+  // Relations
+  chapterId   String
+  chapter     AudioChapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([chapterId, order]) // Ensure unique part order per chapter
+  @@map("audio_parts")
+}
+
+enum AudioChapterStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AudioPartStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
 }
 
 
