@@ -520,4 +520,221 @@ export const reorderAudioParts = async (req, res) => {
   }
 };
 
+// ===== DIRECT AUDIO PARTS (NOT THROUGH CHAPTERS) =====
+
+// @desc Create a new audio part directly for an audio (not through chapter)
+export const createDirectAudioPart = async (req, res) => {
+  try {
+    const { audioId } = req.params;
+    const { title, description, order, status, fileName, publicId, fileUrl, duration } = req.body;
+
+    // Check if user is authenticated
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: "User not authenticated." });
+    }
+
+    // Check if audio exists and belongs to user
+    const audio = await prisma.audio.findUnique({
+      where: { id: audioId },
+      select: {
+        id: true,
+        title: true,
+        userId: true
+      }
+    });
+
+    if (!audio) {
+      return res.status(404).json({ error: "Audio not found." });
+    }
+
+    if (audio.userId !== req.user.id) {
+      return res.status(403).json({ error: "You can only create parts for your own audio." });
+    }
+
+    // Get the next part order if not provided
+    let partOrder = order;
+    if (!partOrder) {
+      const existingParts = await prisma.audioPart.findMany({
+        where: { 
+          chapter: {
+            audioId: audioId
+          }
+        },
+        orderBy: { order: 'asc' },
+        select: { order: true }
+      });
+      const existingOrders = existingParts.map(p => p.order);
+      let nextOrder = 1;
+      for (let i = 0; i < existingOrders.length; i++) {
+        if (existingOrders[i] !== i + 1) {
+          nextOrder = i + 1;
+          break;
+        }
+        nextOrder = i + 2; // If no gap, next order is after the last
+      }
+      partOrder = nextOrder;
+    }
+
+    // Validate status
+    const partStatus = status === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT';
+
+    // Create a default chapter for this audio if it doesn't exist
+    let defaultChapter = await prisma.audioChapter.findFirst({
+      where: { 
+        audioId: audioId,
+        title: 'Default Chapter'
+      }
+    });
+
+    if (!defaultChapter) {
+      defaultChapter = await prisma.audioChapter.create({
+        data: {
+          title: 'Default Chapter',
+          description: 'Default chapter for audio parts',
+          order: 1,
+          status: 'PUBLISHED',
+          audioId: audioId,
+          authorId: req.user.id
+        }
+      });
+    }
+
+    const part = await prisma.audioPart.create({
+      data: {
+        title: title || null,
+        description: description || null,
+        order: partOrder,
+        status: partStatus,
+        fileName,
+        publicId: publicId || null,
+        fileUrl,
+        duration: duration || null,
+        chapterId: defaultChapter.id,
+        authorId: req.user.id
+      },
+      include: {
+        chapter: {
+          select: {
+            id: true,
+            title: true,
+            audio: {
+              select: {
+                id: true,
+                title: true
+              }
+            }
+          }
+        },
+        author: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true
+          }
+        }
+      }
+    });
+
+    console.log('✅ Direct audio part created successfully:', part.id);
+    res.status(201).json({
+      success: true,
+      message: "Audio part created successfully",
+      part
+    });
+  } catch (error) {
+    console.error("🔥 createDirectAudioPart error:", error);
+    
+    if (error.code === 'P2002') {
+      return res.status(400).json({
+        success: false,
+        message: "A part with this order already exists for this audio."
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: "Failed to create audio part",
+      error: error.message
+    });
+  }
+};
+
+// @desc Get all parts for an audio directly (not through chapter)
+export const getDirectAudioParts = async (req, res) => {
+  try {
+    const { audioId } = req.params;
+    const { includeUnpublished = false } = req.query;
+
+    // Check if audio exists
+    const audio = await prisma.audio.findUnique({
+      where: { id: audioId },
+      select: {
+        id: true,
+        title: true,
+        userId: true,
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true
+          }
+        }
+      }
+    });
+
+    if (!audio) {
+      return res.status(404).json({
+        success: false,
+        message: "Audio not found"
+      });
+    }
+
+    // Build where clause
+    const whereClause = { 
+      chapter: {
+        audioId: audioId
+      }
+    };
+    if (!includeUnpublished) {
+      whereClause.status = 'PUBLISHED';
+    }
+
+    // If not including unpublished and user is not the owner, only show published
+    if (!includeUnpublished && (!req.user || req.user.id !== audio.userId)) {
+      whereClause.status = 'PUBLISHED';
+    }
+
+    const parts = await prisma.audioPart.findMany({
+      where: whereClause,
+      orderBy: { order: 'asc' },
+      include: {
+        author: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true
+          }
+        }
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      parts,
+      audio
+    });
+  } catch (error) {
+    console.error("🔥 getDirectAudioParts error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch audio parts",
+      error: error.message
+    });
+  }
+};
+
+
+
+
+
 

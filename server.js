@@ -118,11 +118,12 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/books', bookRoutes);
-app.use('/api/audio', audioRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api', chapterRoutes);
-app.use('/api/audio', audioChapterRoutes);
-app.use('/api/audio', audioPartRoutes);
+// Audio routes - more specific routes first to avoid conflicts
+app.use('/api/audio', audioPartRoutes);      // Must come before audioRoutes
+app.use('/api/audio', audioChapterRoutes);   // Must come before audioRoutes
+app.use('/api/audio', audioRoutes);          // General audio routes last
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
