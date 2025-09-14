@@ -175,7 +175,6 @@ model Book {
   author      String
   isbn        String?   @unique
   tags        String[] // array of tags like ["fiction", "history"]
-  subCategories String[] @default([])
   description String?
   publishedAt DateTime?
 
@@ -188,7 +187,12 @@ model Book {
 
   content     String?   @db.Text   // To store the rich text (HTML) from the editor
   status      BookStatus @default(DRAFT) // Default new books to DRAFT
-  category    String?   @db.VarChar(100)
+  
+  // Category relations
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  subCategoryId String?
+  subCategory SubCategory? @relation(fields: [subCategoryId], references: [id], onDelete: SetNull)
   
   userId      String? 
   user        User? @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -242,14 +246,19 @@ model Audio {
   description String?
   status      AudioStatus @default(DRAFT) 
   tags        String[] @default([])
-  subCategories String[] @default([])
   fileName    String
   publicId  String?
   fileUrl   String
   segmentUrls      String[] @default([])
   segmentPublicIds String[] @default([])
   totalDuration    Int?
-  category  String?   @db.VarChar(100)
+  
+  // Category relations
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  subCategoryId String?
+  subCategory SubCategory? @relation(fields: [subCategoryId], references: [id], onDelete: SetNull)
+  
   user      User?@relation(fields: [userId], references: [id],onDelete:Cascade)
   userId    String?
   
@@ -323,6 +332,46 @@ enum AudioPartStatus {
   DRAFT
   PUBLISHED
   ARCHIVED
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique @db.VarChar(100)
+  description String?  @db.Text
+  image       String?  @db.VarChar(500)
+  color       String?  @db.VarChar(50) // For UI theming
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  
+  // Relations
+  subCategories SubCategory[]
+  books         Book[]
+  audio         Audio[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("categories")
+}
+
+model SubCategory {
+  id          String   @id @default(cuid())
+  name        String   @db.VarChar(100)
+  description String?  @db.Text
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  
+  // Relations
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  books       Book[]
+  audio       Audio[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([categoryId, name]) // Ensure unique subcategory name per category
+  @@map("sub_categories")
 }
 
 

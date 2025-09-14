@@ -7,17 +7,29 @@ import { extractContentFromUrl } from '../services/contentExtractor.js';
 // GET all PUBLISHED books for the public
 export const getPublishedBooks = async (req, res) => {
   try {
-    const { category, subCategory } = req.query;
+    const { categoryId, subCategoryId } = req.query;
     const whereClause = { status: 'PUBLISHED' };
-    if (category) {
-      whereClause.category = { equals: category, mode: 'insensitive' };
+    
+    if (categoryId) {
+      whereClause.categoryId = categoryId;
     }
-    if (subCategory) {
-      whereClause.subCategories = { has: subCategory };
+    if (subCategoryId) {
+      whereClause.subCategoryId = subCategoryId;
     }
 
     const books = await prisma.book.findMany({
       where: whereClause,
+      include: {
+        category: true,
+        subCategory: true,
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true
+          }
+        }
+      },
       orderBy: { publishedAt: 'desc' },
     });
     res.status(200).json(books);
@@ -32,6 +44,27 @@ export const getMyBooks = async (req, res) => {
   try {
     const books = await prisma.book.findMany({
       where: { userId: req.user.id },
+      include: {
+        category: true,
+        subCategory: true,
+        chapters: {
+          select: {
+            id: true,
+            title: true,
+            order: true,
+            status: true,
+            isPublished: true
+          },
+          orderBy: {
+            order: 'asc'
+          }
+        },
+        _count: {
+          select: {
+            chapters: true
+          }
+        }
+      },
       orderBy: { updatedAt: 'asc' },
     });
     res.status(200).json(books);
@@ -53,6 +86,15 @@ export const getBookById = async (req, res) => {
     const book = await prisma.book.findFirst({ 
       where: query,
       include: {
+        category: true,
+        subCategory: true,
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true
+          }
+        },
         chapters: {
           orderBy: {
             order: 'asc'
@@ -89,10 +131,10 @@ export const createBook = async (req, res) => {
       description,
       isbn,
       tags,
-      subCategories,
       content,
       status,
-      category,
+      categoryId,
+      subCategoryId,
     } = req.body;
 
     const coverImageFile = req.files?.coverImage?.[0];
@@ -117,19 +159,27 @@ export const createBook = async (req, res) => {
       content = await extractContentFromUrl(bookFileUrl);
     }
 
-    let parsedSubCategories = [];
-    if (subCategories) {
-      if (typeof subCategories === 'string') {
-        try {
-          parsedSubCategories = JSON.parse(subCategories);
-        } catch {
-          parsedSubCategories = subCategories
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean);
-        }
-      } else if (Array.isArray(subCategories)) {
-        parsedSubCategories = subCategories;
+    // Validate category and subcategory if provided
+    if (categoryId) {
+      const category = await prisma.category.findUnique({
+        where: { id: categoryId }
+      });
+      if (!category) {
+        return res.status(400).json({ error: 'Invalid category ID.' });
+      }
+    }
+
+    if (subCategoryId) {
+      const subCategory = await prisma.subCategory.findUnique({
+        where: { id: subCategoryId }
+      });
+      if (!subCategory) {
+        return res.status(400).json({ error: 'Invalid subcategory ID.' });
+      }
+      
+      // Ensure subcategory belongs to the selected category
+      if (categoryId && subCategory.categoryId !== categoryId) {
+        return res.status(400).json({ error: 'Subcategory does not belong to the selected category.' });
       }
     }
 
@@ -140,10 +190,10 @@ export const createBook = async (req, res) => {
         description,
         isbn: isbn || null,
         tags: tags ? JSON.parse(tags) : [],
-        subCategories: parsedSubCategories,
         content: content || '',
         status: status || 'DRAFT',
-        category: category || null,
+        categoryId: categoryId || null,
+        subCategoryId: subCategoryId || null,
         userId: req.user.id,
         coverImage: coverImageUrl,
         coverImagePublicId: coverImagePublicId,
@@ -152,6 +202,10 @@ export const createBook = async (req, res) => {
         readUrl,
         downloadUrl,
       },
+      include: {
+        category: true,
+        subCategory: true
+      }
     });
 
     res.status(201).json(book);
@@ -171,10 +225,10 @@ export const updateBook = async (req, res) => {
       description,
       isbn,
       tags,
-      subCategories,
       content,
       status,
-      category,
+      categoryId,
+      subCategoryId,
     } = req.body;
 
     const existingBook = await prisma.book.findFirst({
@@ -185,6 +239,30 @@ export const updateBook = async (req, res) => {
         .status(404)
         .json({ error: "Book not found or you don't have permission." });
 
+    // Validate category and subcategory if provided
+    if (categoryId) {
+      const category = await prisma.category.findUnique({
+        where: { id: categoryId }
+      });
+      if (!category) {
+        return res.status(400).json({ error: 'Invalid category ID.' });
+      }
+    }
+
+    if (subCategoryId) {
+      const subCategory = await prisma.subCategory.findUnique({
+        where: { id: subCategoryId }
+      });
+      if (!subCategory) {
+        return res.status(400).json({ error: 'Invalid subcategory ID.' });
+      }
+      
+      // Ensure subcategory belongs to the selected category
+      if (categoryId && subCategory.categoryId !== categoryId) {
+        return res.status(400).json({ error: 'Subcategory does not belong to the selected category.' });
+      }
+    }
+
     const dataToUpdate = {
       title,
       author,
@@ -193,17 +271,8 @@ export const updateBook = async (req, res) => {
       status,
       isbn: isbn || null,
       tags: tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : undefined,
-      subCategories: subCategories
-        ? typeof subCategories === 'string'
-          ? subCategories.startsWith('[')
-            ? JSON.parse(subCategories)
-            : subCategories
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean)
-          : subCategories
-        : undefined,
-      category: typeof category === 'string' ? category : undefined,
+      categoryId: categoryId || null,
+      subCategoryId: subCategoryId || null,
     };
 
     const coverImageFile = req.files?.coverImage?.[0];

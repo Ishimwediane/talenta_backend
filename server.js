@@ -17,6 +17,7 @@ import adminRoutes from './routes/admin.routes.js';
 import chapterRoutes from './routes/chapterRoutes.js';
 import audioChapterRoutes from './routes/audioChapterRoutes.js';
 import audioPartRoutes from './routes/audioPartRoutes.js';
+import categoryRoutes from './routes/categoryRoutes.js';
 
 dotenv.config();
 
@@ -119,11 +120,13 @@ app.use('/api/users', userRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/books', bookRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api', chapterRoutes);
+app.use('/api/categories', categoryRoutes);
 // Audio routes - more specific routes first to avoid conflicts
 app.use('/api/audio', audioPartRoutes);      // Must come before audioRoutes
 app.use('/api/audio', audioChapterRoutes);   // Must come before audioRoutes
 app.use('/api/audio', audioRoutes);          // General audio routes last
+// Chapter routes - must come last to avoid catching other routes
+app.use('/api', chapterRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
