@@ -21,6 +21,7 @@ import {
 import { authenticateToken } from "../middleware/auth.middleware.js";
 import { tryAuthenticateToken } from "../middleware/tryAuthenticateToken.js";
 import { audioUpload } from "../middleware/uploadMiddleware.js";
+import { toggleAudioLike, rateAudio, commentAudio, viewAudio, shareAudio } from "../controllers/engagement.controller.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -127,6 +128,13 @@ router.delete("/:id", authenticateToken, deleteAudio);
 router.get("/play/:filename", playAudio);        // Stream audio file (for backward compatibility)
 router.get("/:id", tryAuthenticateToken, getAudioById);               // Get audio by ID (public for published, owner for drafts)
 router.get("/", tryAuthenticateToken, getAllAudios);                  // Get published audios (optionally filtered by category)
+
+// Engagement routes
+router.post('/:id/like', authenticateToken, toggleAudioLike);
+router.post('/:id/rate', authenticateToken, rateAudio);
+router.post('/:id/comment', authenticateToken, commentAudio);
+router.post('/:id/view', tryAuthenticateToken, viewAudio);
+router.post('/:id/share', tryAuthenticateToken, shareAudio);
 
 // Debug route to test uploads directory
 router.get("/debug/uploads", (req, res) => {

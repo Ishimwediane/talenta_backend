@@ -135,6 +135,10 @@ export const createBook = async (req, res) => {
       status,
       categoryId,
       subCategoryId,
+      characters,
+      targetAudience,
+      language,
+      estimatedReadingTime,
     } = req.body;
 
     const coverImageFile = req.files?.coverImage?.[0];
@@ -194,6 +198,10 @@ export const createBook = async (req, res) => {
         status: status || 'DRAFT',
         categoryId: categoryId || null,
         subCategoryId: subCategoryId || null,
+        characters: characters || null,
+        targetAudience: targetAudience || null,
+        language: language || null,
+        estimatedReadingTime: estimatedReadingTime ? parseInt(estimatedReadingTime) : null,
         userId: req.user.id,
         coverImage: coverImageUrl,
         coverImagePublicId: coverImagePublicId,
@@ -229,6 +237,10 @@ export const updateBook = async (req, res) => {
       status,
       categoryId,
       subCategoryId,
+      characters,
+      targetAudience,
+      language,
+      estimatedReadingTime,
     } = req.body;
 
     const existingBook = await prisma.book.findFirst({
@@ -273,6 +285,10 @@ export const updateBook = async (req, res) => {
       tags: tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : undefined,
       categoryId: categoryId || null,
       subCategoryId: subCategoryId || null,
+      characters: characters || null,
+      targetAudience: targetAudience || null,
+      language: language || null,
+      estimatedReadingTime: estimatedReadingTime ? parseInt(estimatedReadingTime) : null,
     };
 
     const coverImageFile = req.files?.coverImage?.[0];

@@ -51,6 +51,18 @@ model User {
   audioChapters AudioChapter[]
   audioParts AudioPart[]
 
+  // Engagement back-relations
+  bookLikes    BookLike[]
+  bookRatings  BookRating[]
+  bookComments BookComment[]
+  bookViews    BookView[]
+  bookShares   BookShare[]
+  audioLikes    AudioLike[]
+  audioRatings  AudioRating[]
+  audioComments AudioComment[]
+  audioViews    AudioView[]
+  audioShares   AudioShare[]
+
 
   @@map("users")
 }
@@ -188,6 +200,20 @@ model Book {
   content     String?   @db.Text   // To store the rich text (HTML) from the editor
   status      BookStatus @default(DRAFT) // Default new books to DRAFT
   
+  // New fields for enhanced book creation
+  characters      String?   @db.Text   // Character descriptions and details
+  targetAudience  String?   @db.VarChar(100) // Target audience (e.g., "Children", "Young Adults", "Adults")
+  language        String?   @db.VarChar(50)   // Book language (e.g., "English", "Spanish", "French")
+  estimatedReadingTime Int? // Estimated reading time in minutes
+  
+  // Engagement rollups
+  likesCount     Int      @default(0)
+  commentsCount  Int      @default(0)
+  ratingAvg      Float    @default(0)
+  ratingCount    Int      @default(0)
+  viewsCount     Int      @default(0)
+  sharesCount    Int      @default(0)
+  
   // Category relations
   categoryId  String?
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -199,9 +225,84 @@ model Book {
 
   // Relations
   chapters    Chapter[]
+  tableOfContents TableOfContent[] // New relation for table of contents
+  likes       BookLike[]
+  ratings     BookRating[]
+  comments    BookComment[]
+  views       BookView[]
+  shares      BookShare[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model BookLike {
+  id        String  @id @default(cuid())
+  bookId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([bookId, userId])
+  @@map("book_likes")
+}
+
+model BookRating {
+  id        String  @id @default(cuid())
+  bookId    String
+  userId    String
+  stars     Int
+  createdAt DateTime @default(now())
+
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([bookId, userId])
+  @@map("book_ratings")
+}
+
+model BookComment {
+  id        String  @id @default(cuid())
+  bookId    String
+  userId    String
+  content   String  @db.Text
+  createdAt DateTime @default(now())
+
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("book_comments")
+}
+
+model BookView {
+  id        String  @id @default(cuid())
+  bookId    String
+  userId    String?
+  sessionId String?
+  ipHash    String?
+  createdAt DateTime @default(now())
+
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([bookId, userId])
+  @@map("book_views")
+}
+
+model BookShare {
+  id        String  @id @default(cuid())
+  bookId    String
+  userId    String?
+  channel   String   @db.VarChar(50)
+  createdAt DateTime @default(now())
+
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([bookId])
+  @@map("book_shares")
 }
 
 model Chapter {
@@ -221,6 +322,7 @@ model Chapter {
   book        Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
   authorId    String
   author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  tableOfContents TableOfContent[] // Relation to table of contents entries
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -252,6 +354,13 @@ model Audio {
   segmentUrls      String[] @default([])
   segmentPublicIds String[] @default([])
   totalDuration    Int?
+  // Engagement rollups
+  likesCount     Int      @default(0)
+  commentsCount  Int      @default(0)
+  ratingAvg      Float    @default(0)
+  ratingCount    Int      @default(0)
+  viewsCount     Int      @default(0)
+  sharesCount    Int      @default(0)
   
   // Category relations
   categoryId  String?
@@ -264,9 +373,83 @@ model Audio {
   
   // Relations
   chapters  AudioChapter[]
+  likes       AudioLike[]
+  ratings     AudioRating[]
+  comments    AudioComment[]
+  views       AudioView[]
+  shares      AudioShare[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model AudioLike {
+  id        String  @id @default(cuid())
+  audioId   String
+  userId    String
+  createdAt DateTime @default(now())
+
+  audio  Audio  @relation(fields: [audioId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([audioId, userId])
+  @@map("audio_likes")
+}
+
+model AudioRating {
+  id        String  @id @default(cuid())
+  audioId   String
+  userId    String
+  stars     Int
+  createdAt DateTime @default(now())
+
+  audio  Audio  @relation(fields: [audioId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([audioId, userId])
+  @@map("audio_ratings")
+}
+
+model AudioComment {
+  id        String  @id @default(cuid())
+  audioId   String
+  userId    String
+  content   String  @db.Text
+  createdAt DateTime @default(now())
+
+  audio  Audio  @relation(fields: [audioId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("audio_comments")
+}
+
+model AudioView {
+  id        String  @id @default(cuid())
+  audioId   String
+  userId    String?
+  sessionId String?
+  ipHash    String?
+  createdAt DateTime @default(now())
+
+  audio  Audio  @relation(fields: [audioId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([audioId, userId])
+  @@map("audio_views")
+}
+
+model AudioShare {
+  id        String  @id @default(cuid())
+  audioId   String
+  userId    String?
+  channel   String   @db.VarChar(50)
+  createdAt DateTime @default(now())
+
+  audio  Audio  @relation(fields: [audioId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([audioId])
+  @@map("audio_shares")
 }
 
 model AudioChapter {
@@ -372,6 +555,27 @@ model SubCategory {
   
   @@unique([categoryId, name]) // Ensure unique subcategory name per category
   @@map("sub_categories")
+}
+
+model TableOfContent {
+  id          String   @id @default(cuid())
+  title       String   @db.VarChar(255)
+  description String?  @db.Text
+  order       Int      // Order in the table of contents
+  pageNumber  Int?     // Optional page number reference
+  chapterId   String?  // Optional reference to a chapter
+  isActive    Boolean  @default(true)
+  
+  // Relations
+  bookId      String
+  book        Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  chapter     Chapter? @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([bookId, order]) // Ensure unique order per book
+  @@map("table_of_contents")
 }
 
 

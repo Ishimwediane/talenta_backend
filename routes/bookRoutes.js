@@ -12,6 +12,7 @@ import {
 import { authenticateToken } from '../middleware/auth.middleware.js';
 import { tryAuthenticateToken } from '../middleware/tryAuthenticateToken.js';
 import { readBook, downloadBook } from '../controllers/bookFileController.js';
+import { toggleBookLike, rateBook, commentBook, viewBook, shareBook } from '../controllers/engagement.controller.js';
 
 const router = express.Router();
 
@@ -36,4 +37,11 @@ router.get('/read/:filename', readBook);
 
 // Route for downloading book
 router.get('/download/:filename', downloadBook);
+
+// Engagement routes
+router.post('/:id/like', authenticateToken, toggleBookLike);
+router.post('/:id/rate', authenticateToken, rateBook);
+router.post('/:id/comment', authenticateToken, commentBook);
+router.post('/:id/view', tryAuthenticateToken, viewBook);
+router.post('/:id/share', tryAuthenticateToken, shareBook);
 export default router;

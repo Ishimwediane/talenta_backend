@@ -1,4 +1,6 @@
 import express from 'express';
+import http from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -18,6 +20,7 @@ import chapterRoutes from './routes/chapterRoutes.js';
 import audioChapterRoutes from './routes/audioChapterRoutes.js';
 import audioPartRoutes from './routes/audioPartRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js';
+import tableOfContentRoutes from './routes/tableOfContentRoutes.js';
 
 dotenv.config();
 
@@ -25,6 +28,31 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
+const httpServer = http.createServer(app);
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: [
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      process.env.FRONTEND_URL
+    ].filter(Boolean),
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+  }
+});
+
+// Basic websocket wiring
+io.on('connection', (socket) => {
+  // Join rooms like `book:<id>` or `audio:<id>` from client
+  socket.on('realtime:join', (room) => {
+    if (typeof room === 'string' && room.length < 200) {
+      socket.join(room);
+    }
+  });
+  socket.on('disconnect', () => {});
+});
+
+// Expose io to routes/controllers via app.locals
+app.locals.io = io;
 const PORT = process.env.PORT || 5000;
 
 // Add timeout configurations
@@ -121,6 +149,7 @@ app.use('/api/content', contentRoutes);
 app.use('/api/books', bookRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api', tableOfContentRoutes);
 // Audio routes - more specific routes first to avoid conflicts
 app.use('/api/audio', audioPartRoutes);      // Must come before audioRoutes
 app.use('/api/audio', audioChapterRoutes);   // Must come before audioRoutes
@@ -155,7 +184,7 @@ app.use('*', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`🚀 Talenta Backend Server running on port ${PORT}`);
   console.log(`📱 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
