@@ -577,7 +577,7 @@ export const updateAudio = async (req, res) => {
     console.log('📝 Update audio request:', { params: req.params, body: req.body, user: req.user?.id });
 
     const { id } = req.params;
-    const { title, description, tags, subCategories, category, status } = req.body;
+    const { title, description, tags, categoryId, subCategoryId, fileUrl, status } = req.body;
 
     // Check if user is authenticated
     if (!req.user || !req.user.id) {
@@ -611,20 +611,6 @@ export const updateAudio = async (req, res) => {
       }
     }
 
-    // Parse subCategories (support string or array)
-    let parsedSubCategories = existingAudio.subCategories || [];
-    if (subCategories !== undefined) {
-      if (typeof subCategories === "string") {
-        try {
-          parsedSubCategories = JSON.parse(subCategories);
-        } catch {
-          parsedSubCategories = subCategories.split(",").map(s => s.trim()).filter(Boolean);
-        }
-      } else if (Array.isArray(subCategories)) {
-        parsedSubCategories = subCategories;
-      }
-    }
-
     // Validate and normalize status
     let normalizedStatus = existingAudio.status;
     if (status !== undefined) {
@@ -638,9 +624,10 @@ export const updateAudio = async (req, res) => {
     const updateData = {};
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
-    if (category !== undefined) updateData.category = category;
+    if (fileUrl !== undefined) updateData.fileUrl = fileUrl;
+    if (categoryId !== undefined) updateData.categoryId = categoryId || null;
+    if (subCategoryId !== undefined) updateData.subCategoryId = subCategoryId || null;
     updateData.tags = parsedTags;
-    updateData.subCategories = parsedSubCategories;
     updateData.status = normalizedStatus;
 
     const updatedAudio = await prisma.audio.update({
