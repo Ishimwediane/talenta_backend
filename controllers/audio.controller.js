@@ -30,7 +30,7 @@ export const uploadAudio = async (req, res) => {
       user: req.user ? { id: req.user.id } : null
     });
 
-    const { title, description, tags, subCategories, status, category } = req.body;
+    const { title, description, tags, status, category, subCategory } = req.body;
 
     // Check if user is authenticated
     if (!req.user || !req.user.id) {
@@ -56,19 +56,7 @@ export const uploadAudio = async (req, res) => {
       }
     }
 
-    // Parse subCategories (support string or array)
-    let parsedSubCategories = [];
-    if (subCategories) {
-      if (typeof subCategories === "string") {
-        try {
-          parsedSubCategories = JSON.parse(subCategories);
-        } catch {
-          parsedSubCategories = subCategories.split(",").map(s => s.trim()).filter(Boolean);
-        }
-      } else if (Array.isArray(subCategories)) {
-        parsedSubCategories = subCategories;
-      }
-    }
+    // Note: subCategories is no longer used - we now use subCategoryId (foreign key)
 
     // Get audio file URL and public ID from Cloudinary upload
     let audioFileUrl = null;
@@ -93,19 +81,32 @@ export const uploadAudio = async (req, res) => {
     // Validate status
     const audioStatus = status === 'draft' ? 'DRAFT' : 'PUBLISHED';
 
-    console.log('💾 Creating audio record in database...');
+    // Ensure fileName is not null (Prisma requires it)
+    if (!fileName) {
+      fileName = req.file?.originalname || `recording_${Date.now()}.webm`;
+    }
+
+    console.log('💾 Creating audio record in database...', {
+      title: title || req.file?.originalname || "Untitled",
+      fileName,
+      fileUrl: audioFileUrl,
+      status: audioStatus,
+      categoryId: category || null,
+      subCategoryId: subCategory || null,
+      userId: req.user.id
+    });
 
     const audio = await prisma.audio.create({
       data: {
         title: title || req.file?.originalname || "Untitled",
         description: description || null,
         tags: parsedTags,
-        subCategories: parsedSubCategories,
-        fileName: fileName,
-        publicId: publicId, // Cloudinary public ID
+        fileName: fileName, // Required field - must not be null
+        publicId: publicId || null, // Cloudinary public ID (optional)
         fileUrl: audioFileUrl, // Cloudinary URL
         status: audioStatus,
-        category: category || null,
+        categoryId: category || null, // Use categoryId (foreign key) instead of category (relation)
+        subCategoryId: subCategory || null, // Use subCategoryId (foreign key)
         userId: req.user.id, // from JWT
       },
       include: {
@@ -123,6 +124,12 @@ export const uploadAudio = async (req, res) => {
     res.status(201).json({ message: "Audio uploaded successfully", audio });
   } catch (error) {
     console.error("🔥 uploadAudio error:", error);
+    console.error("🔥 Error details:", {
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+      meta: error.meta
+    });
     
     // If there was a file uploaded but database save failed, clean up the file
     if (req.file && req.file.filename) {
@@ -137,11 +144,11 @@ export const uploadAudio = async (req, res) => {
     
     // Send more specific error messages
     if (error.code === 'P2002') {
-      res.status(409).json({ error: "A record with this data already exists." });
+      res.status(409).json({ error: "A record with this data already exists.", details: error.message });
     } else if (error.code && error.code.startsWith('P')) {
-      res.status(500).json({ error: "Database error occurred." });
+      res.status(500).json({ error: "Database error occurred.", details: error.message, code: error.code });
     } else {
-      res.status(500).json({ error: "Failed to upload audio." });
+      res.status(500).json({ error: error.message || "Failed to upload audio.", details: error.stack });
     }
   }
 };
