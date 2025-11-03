@@ -22,21 +22,19 @@ const bookUploadMiddleware = bookUpload.fields([
   { name: 'bookFile', maxCount: 1 },
 ]);
 
-// --- Public Route ---
+// --- Public Routes ---
 router.get('/', getPublishedBooks);
+// Public book reading endpoints (must come before /:id route)
+router.get('/read/:filename', readBook);
+router.get('/download/:filename', downloadBook);
 
 // --- Authenticated Routes ---
 router.get('/my-books', authenticateToken, getMyBooks);
+// Public book access (optional auth - allows reading published books without login)
 router.get('/:id', tryAuthenticateToken, getBookById);
 router.post('/', authenticateToken, bookUploadMiddleware, createBook);
 router.put('/:id', authenticateToken, bookUploadMiddleware, updateBook);
 router.delete('/:id', authenticateToken, deleteBook);
-
-
-router.get('/read/:filename', readBook);
-
-// Route for downloading book
-router.get('/download/:filename', downloadBook);
 
 // Engagement routes
 router.post('/:id/like', authenticateToken, toggleBookLike);

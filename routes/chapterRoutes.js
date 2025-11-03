@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticateToken } from '../middleware/auth.middleware.js';
+import { tryAuthenticateToken } from '../middleware/tryAuthenticateToken.js';
 import {
   getBookChapters,
   getChapter,
@@ -11,16 +12,15 @@ import {
 
 const router = express.Router();
 
-// Apply authentication middleware to all chapter routes
-router.use(authenticateToken);
+// Public routes - allow reading published chapters without authentication
+router.get('/books/:bookId/chapters', tryAuthenticateToken, getBookChapters);
+router.get('/chapters/:chapterId', tryAuthenticateToken, getChapter);
 
-// Chapter routes
-router.get('/books/:bookId/chapters', getBookChapters);
-router.get('/chapters/:chapterId', getChapter);
-router.post('/books/:bookId/chapters', createChapter);
-router.put('/chapters/:chapterId', updateChapter);
-router.delete('/chapters/:chapterId', deleteChapter);
-router.put('/books/:bookId/chapters/reorder', reorderChapters);
+// Protected routes - require authentication for creating/updating/deleting
+router.post('/books/:bookId/chapters', authenticateToken, createChapter);
+router.put('/chapters/:chapterId', authenticateToken, updateChapter);
+router.delete('/chapters/:chapterId', authenticateToken, deleteChapter);
+router.put('/books/:bookId/chapters/reorder', authenticateToken, reorderChapters);
 
 export default router;
 

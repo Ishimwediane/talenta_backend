@@ -9,8 +9,12 @@
     "dev": "nodemon server.js",
     "seed": "node prisma/seed-categories.js",
     "migrate": "npx prisma migrate dev",
-    "generate": "npx prisma generate",
-    "studio": "npx prisma studio"
+    "migrate:deploy": "npx prisma migrate deploy",
+    "db:generate": "npx prisma generate",
+    "db:push": "npx prisma db push",
+    "db:migrate": "npx prisma migrate deploy",
+    "db:studio": "npx prisma studio",
+    "db:reset": "npx prisma migrate reset"
   },
   "dependencies": {
     "@prisma/client": "^5.7.1",

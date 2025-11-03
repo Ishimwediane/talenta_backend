@@ -2,6 +2,7 @@ import prisma from '../lib/prisma.js';
 
 /**
  * Get all chapters for a book
+ * Public access - only shows published chapters unless user is the book owner
  */
 export const getBookChapters = async (req, res) => {
   try {
@@ -11,7 +12,7 @@ export const getBookChapters = async (req, res) => {
     // Check if book exists
     const book = await prisma.book.findUnique({
       where: { id: bookId },
-      select: { id: true, title: true, author: true }
+      select: { id: true, title: true, author: true, userId: true, status: true }
     });
 
     if (!book) {
@@ -21,9 +22,25 @@ export const getBookChapters = async (req, res) => {
       });
     }
 
+    // Check if user is authenticated and is the book owner
+    const isOwner = req.user && req.user.id === book.userId;
+    
+    // Public access: Only PUBLISHED books can be accessed by anyone
+    // Private access: DRAFT books can only be accessed by owners
+    if (book.status === 'DRAFT' && !isOwner) {
+      return res.status(403).json({
+        success: false,
+        message: 'This book is not published yet. Only the author can access draft books.'
+      });
+    }
+    
     // Build where clause for chapters
     const where = { bookId };
-    if (!includeUnpublished) {
+    
+    // Only show unpublished chapters if:
+    // 1. User is authenticated AND is the book owner AND explicitly requested unpublished
+    // 2. Otherwise, only show published chapters
+    if (!includeUnpublished || !isOwner) {
       where.isPublished = true;
     }
 
@@ -61,6 +78,7 @@ export const getBookChapters = async (req, res) => {
 
 /**
  * Get a specific chapter
+ * Public access - only shows published chapters unless user is the book owner
  */
 export const getChapter = async (req, res) => {
   try {
@@ -73,7 +91,9 @@ export const getChapter = async (req, res) => {
           select: {
             id: true,
             title: true,
-            author: true
+            author: true,
+            userId: true,
+            status: true  // Include status to check if book is published
           }
         },
         author: {
@@ -88,6 +108,26 @@ export const getChapter = async (req, res) => {
     });
 
     if (!chapter) {
+      return res.status(404).json({
+        success: false,
+        message: 'Chapter not found'
+      });
+    }
+
+    // Check if user is the book owner
+    const isOwner = req.user && req.user.id === chapter.book.userId;
+    
+    // Public access: Only PUBLISHED books can be accessed by anyone
+    // Private access: DRAFT books can only be accessed by owners
+    if (chapter.book.status === 'DRAFT' && !isOwner) {
+      return res.status(403).json({
+        success: false,
+        message: 'This book is not published yet. Only the author can access draft books.'
+      });
+    }
+    
+    // Only show unpublished chapters to the book owner
+    if (!chapter.isPublished && !isOwner) {
       return res.status(404).json({
         success: false,
         message: 'Chapter not found'

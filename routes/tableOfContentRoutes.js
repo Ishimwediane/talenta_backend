@@ -2,6 +2,7 @@
 
 import express from 'express';
 import { authenticateToken } from '../middleware/auth.middleware.js';
+import { tryAuthenticateToken } from '../middleware/tryAuthenticateToken.js';
 import {
   getTableOfContents,
   createTableOfContentEntry,
@@ -12,22 +13,13 @@ import {
 
 const router = express.Router();
 
-// All routes require authentication
-router.use(authenticateToken);
+// Public route - allow reading table of contents without authentication
+router.get('/books/:bookId/table-of-contents', tryAuthenticateToken, getTableOfContents);
 
-// GET table of contents for a book
-router.get('/books/:bookId/table-of-contents', getTableOfContents);
-
-// POST create a new table of contents entry
-router.post('/books/:bookId/table-of-contents', createTableOfContentEntry);
-
-// PUT update a table of contents entry
-router.put('/table-of-contents/:entryId', updateTableOfContentEntry);
-
-// DELETE a table of contents entry
-router.delete('/table-of-contents/:entryId', deleteTableOfContentEntry);
-
-// POST reorder table of contents entries
-router.post('/books/:bookId/table-of-contents/reorder', reorderTableOfContents);
+// Protected routes - require authentication for creating/updating/deleting
+router.post('/books/:bookId/table-of-contents', authenticateToken, createTableOfContentEntry);
+router.put('/table-of-contents/:entryId', authenticateToken, updateTableOfContentEntry);
+router.delete('/table-of-contents/:entryId', authenticateToken, deleteTableOfContentEntry);
+router.post('/books/:bookId/table-of-contents/reorder', authenticateToken, reorderTableOfContents);
 
 export default router;

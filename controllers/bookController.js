@@ -77,14 +77,13 @@ export const getMyBooks = async (req, res) => {
 // GET a single book by ID for editing/reading
 export const getBookById = async (req, res) => {
   try {
-    const query = { id: req.params.id };
+    const { id } = req.params;
+    const userId = req.user?.id; // Optional - user might not be authenticated
     
-    // For now, let's not filter by userId to allow public access
-    // We'll handle permissions in the frontend
-    console.log('🔍 getBookById query:', query);
+    console.log('🔍 getBookById query:', { id, userId });
 
     const book = await prisma.book.findFirst({ 
-      where: query,
+      where: { id },
       include: {
         category: true,
         subCategory: true,
@@ -103,19 +102,43 @@ export const getBookById = async (req, res) => {
       }
     });
     
-    console.log('📚 Book found with chapters:', book ? {
+    if (!book) {
+      return res.status(404).json({ error: 'Book not found.' });
+    }
+    
+    // Public access: Anyone can read PUBLISHED books
+    // Private access: Only owners can read DRAFT books
+    if (book.status === 'DRAFT') {
+      if (!userId || book.userId !== userId) {
+        return res.status(403).json({ 
+          error: 'This book is not published yet. Only the author can access draft books.' 
+        });
+      }
+    }
+    
+    // Filter chapters for public users (only show published chapters)
+    // Owners can see all chapters (including drafts)
+    let filteredChapters = book.chapters || [];
+    if (book.status === 'PUBLISHED' && (!userId || book.userId !== userId)) {
+      // Public user viewing published book - only show published chapters
+      filteredChapters = book.chapters.filter(ch => ch.isPublished === true);
+    }
+    
+    // Return book with filtered chapters
+    const bookResponse = {
+      ...book,
+      chapters: filteredChapters
+    };
+    
+    console.log('📚 Book found:', {
       id: book.id,
       title: book.title,
-      chaptersCount: book.chapters ? book.chapters.length : 0,
-      chapters: book.chapters
-    } : 'No book found');
+      status: book.status,
+      chaptersCount: filteredChapters.length,
+      totalChapters: book.chapters?.length || 0
+    });
     
-    if (!book) {
-      return res
-        .status(404)
-        .json({ error: 'Book not found or you do not have permission.' });
-    }
-    res.status(200).json(book);
+    res.status(200).json(bookResponse);
   } catch (error) {
     console.error('🔥 getBookById error:', error);
     res.status(500).json({ error: 'Failed to retrieve book.' });
@@ -125,6 +148,12 @@ export const getBookById = async (req, res) => {
 // POST a new book
 export const createBook = async (req, res) => {
   try {
+    // Validate authentication
+    if (!req.user || !req.user.id) {
+      console.error('⚠️ createBook: No user in request');
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     let {
       title,
       author,
@@ -140,6 +169,18 @@ export const createBook = async (req, res) => {
       language,
       estimatedReadingTime,
     } = req.body;
+
+    console.log('📝 createBook request:', {
+      title,
+      hasContent: !!content,
+      contentLength: content?.length || 0,
+      status,
+      categoryId,
+      subCategoryId,
+      hasCoverImage: !!req.files?.coverImage?.[0],
+      hasBookFile: !!req.files?.bookFile?.[0],
+      userId: req.user.id
+    });
 
     const coverImageFile = req.files?.coverImage?.[0];
     const bookFile = req.files?.bookFile?.[0];
@@ -187,13 +228,27 @@ export const createBook = async (req, res) => {
       }
     }
 
+    // Safely parse tags
+    let parsedTags = [];
+    if (tags) {
+      try {
+        parsedTags = typeof tags === 'string' ? JSON.parse(tags) : tags;
+        if (!Array.isArray(parsedTags)) {
+          parsedTags = [];
+        }
+      } catch (e) {
+        console.warn('Failed to parse tags, using empty array:', e.message);
+        parsedTags = [];
+      }
+    }
+
     const book = await prisma.book.create({
       data: {
         title,
         author: author || 'Unknown Author',
         description,
         isbn: isbn || null,
-        tags: tags ? JSON.parse(tags) : [],
+        tags: parsedTags,
         content: content || '',
         status: status || 'DRAFT',
         categoryId: categoryId || null,
@@ -201,7 +256,9 @@ export const createBook = async (req, res) => {
         characters: characters || null,
         targetAudience: targetAudience || null,
         language: language || null,
-        estimatedReadingTime: estimatedReadingTime ? parseInt(estimatedReadingTime) : null,
+        estimatedReadingTime: estimatedReadingTime && String(estimatedReadingTime).trim() 
+          ? (isNaN(parseInt(estimatedReadingTime)) ? null : parseInt(estimatedReadingTime)) 
+          : null,
         userId: req.user.id,
         coverImage: coverImageUrl,
         coverImagePublicId: coverImagePublicId,
@@ -219,7 +276,23 @@ export const createBook = async (req, res) => {
     res.status(201).json(book);
   } catch (error) {
     console.error('🔥 createBook error:', error);
-    res.status(500).json({ error: 'Failed to create book.' });
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      code: error.code
+    });
+    
+    // Return more specific error messages
+    let errorMessage = 'Failed to create book.';
+    if (process.env.NODE_ENV === 'development') {
+      errorMessage = error.message || errorMessage;
+    }
+    
+    res.status(500).json({ 
+      error: errorMessage,
+      message: errorMessage
+    });
   }
 };
 
