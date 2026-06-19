@@ -56,5 +56,8 @@
     "audio"
   ],
   "author": "Talenta Team",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": " 20.x"
+  }
 }
