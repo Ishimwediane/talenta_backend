@@ -17,7 +17,7 @@
     "db:reset": "npx prisma migrate reset"
   },
   "dependencies": {
-    "@prisma/client": "^5.7.1",
+    "@prisma/client": "^5.22.0",
     "@tiptap/extension-color": "^3.4.2",
     "@tiptap/extension-highlight": "^3.4.2",
     "@tiptap/extension-subscript": "^3.4.2",
@@ -45,7 +45,7 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.2",
-    "prisma": "^5.7.1"
+    "prisma": "^5.22.0"
   },
   "keywords": [
     "api",
