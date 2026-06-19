@@ -31,11 +31,7 @@ const app = express();
 const httpServer = http.createServer(app);
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: [
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      process.env.FRONTEND_URL
-    ].filter(Boolean),
+    origin: '*',
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
   }
 });
@@ -66,13 +62,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// Enhanced CORS configuration
+// Enhanced CORS configuration — allow all origins (frontend URL may change)
 const corsOptions = {
-  origin: [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    process.env.FRONTEND_URL
-  ].filter(Boolean),
+  origin: function (origin, callback) {
+    // Allow all origins (including no-origin requests like mobile apps / curl)
+    callback(null, true);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
   allowedHeaders: [
